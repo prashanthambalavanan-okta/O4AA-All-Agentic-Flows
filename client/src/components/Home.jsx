@@ -4,9 +4,15 @@ import { FLOWS } from '../flows.js';
 const SECTIONS = [
   {
     eyebrow: 'Single Agent',
-    title: 'Single Agent Use Cases',
-    blurb: 'One agent acting for a human or a service identity to reach a protected resource.',
-    flows: ['xaa', 'xaa-webapp', 'hi-saml', 'client-credentials', 'secrets', 'secrets-atlassian', 'secrets-atlassian-token', 'service-account', 'sts-github'],
+    title: 'Human Identity Use Case',
+    blurb: 'One agent acting on behalf of a signed-in human to reach a protected resource.',
+    flows: ['xaa', 'xaa-webapp', 'hi-saml', 'secrets', 'service-account', 'sts-github'],
+  },
+  {
+    eyebrow: 'Single Agent',
+    title: 'Non-Human Identity Use Case',
+    blurb: 'One agent acting as a service identity, with no human login, to reach a protected resource.',
+    flows: ['client-credentials', 'secrets-atlassian', 'secrets-atlassian-token'],
   },
   {
     eyebrow: 'Agent → Agent',

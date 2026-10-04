@@ -253,13 +253,14 @@ body {
 .token-section h4 { margin: 0 0 6px; }
 .tokenview-note { color: var(--muted); font-size: 13px; }
 
-/* Home page — fits the viewport without scrolling. The page is a flex column but
+/* Home page — tiles are content sized; the page scrolls vertically when there are
+   more tiles than fit the viewport. The page is a flex column but
    the tiles are *content* sized (auto rows, top-aligned): leftover height stays
    at the bottom of the page instead of being pumped into the cards, which is
    what made them tall and empty. Cards in the same row still equalise, so the
    footer is pinned with margin-top:auto. */
 .home {
-  flex: 1; min-height: 0; overflow: hidden;
+  flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto;
   display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 22px;
 }
 .home-head { text-align: center; flex: 0 0 auto; margin: 0 auto; }
@@ -319,11 +320,9 @@ body {
 .flow-tagline {
   color: var(--accent); font-size: 10.5px; font-weight: 600; font-family: 'SF Mono', Menlo, monospace;
   line-height: 1.35; margin: 3px 0 7px;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
 .flow-card p {
   flex: 0 1 auto; color: var(--muted); font-size: 12px; line-height: 1.45; margin: 0;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
 }
 /* margin-top:auto keeps the footer on the bottom edge when a neighbouring card
    in the same row is taller; the 10px is the minimum gap after the text. */
@@ -359,14 +358,12 @@ body {
   .section-head { margin-bottom: 8px; padding-bottom: 6px; gap: 4px; }
   .home-section + .home-section { margin-top: 8px; }
   .home-grid { gap: 12px; }
-  .flow-card p { -webkit-line-clamp: 2; }
 }
 /* Too short (or too narrow) to fit four across — fall back to scrolling. */
 @media (max-height: 620px), (max-width: 1180px) {
   .home { overflow: auto; display: block; padding: 24px 20px 32px; }
   .home-section { margin-bottom: 28px; }
   .home-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-  .flow-card p { -webkit-line-clamp: 4; }
 }
 
 /* Badge colours for new flows */

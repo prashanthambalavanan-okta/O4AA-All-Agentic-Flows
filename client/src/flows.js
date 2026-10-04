@@ -12,7 +12,7 @@ export const FLOWS = {
     note: 'Using subject id_token',
     tagline: 'Agent → id-JAG → Resource Access Token → Protected MCP',
     description:
-      'Exchange the user’s ID token for an Identity Assertion Authorization Grant, then for a resource access token, and call the inventory MCP — the token is validated for signature and scope.',
+      'Exchange the user’s ID token for an Identity Assertion Authorization Grant, then for a resource access token, and call the inventory MCP',
     accent: '#16c784',
     suggestions: INVENTORY_SUGGESTIONS,
   },
@@ -23,7 +23,7 @@ export const FLOWS = {
     note: 'Using subject access_token',
     tagline: 'Web App → id-JAG → Resource Access Token → Protected MCP',
     description:
-      'The user signs in to a separate web app (client_secret auth) whose /authorize call carries the resource parameter. Its ACCESS token is the subject of the id-JAG exchange, then a resource access token calls the inventory MCP.',
+      'The user signs in to a separate web app and gets a token with agent resource parameter. Its ACCESS token is the subject of the id-JAG exchange, then a resource access token calls the inventory MCP.',
     accent: '#22d3ee',
     authContext: 'webapp',
     suggestions: INVENTORY_SUGGESTIONS,
@@ -40,7 +40,7 @@ export const FLOWS = {
   },
   secrets: {
     id: 'secrets',
-    name: 'Secrets',
+    name: 'HI - Secrets',
     tagline: 'Agent → Vaulted Secret → Protected MCP',
     description:
       'Exchange the user’s ID token for a vaulted secret from Okta Privileged Access, then call the inventory MCP using HTTP Basic authentication with the retrieved credentials.',
@@ -50,10 +50,10 @@ export const FLOWS = {
   'secrets-atlassian': {
     id: 'secrets-atlassian',
     name: 'NHI - Secrets (Atlassian id/secret from OPA)',
-    warning: 'Not recommended',
+    warning: 'Not recommended (Secrets exposed to agent)',
     tagline: 'Service App → Agent → Vaulted Atlassian id/secret → Atlassian Token → Jira Scrum Board',
     description:
-      'A service app gets a client_credentials token, the agent swaps it for the Atlassian client id/secret in the Okta vault, then reads the Jira Scrum board (read-only). No user login.',
+      'A service app gets a client_credentials token, the agent swaps it for the Atlassian client id/secret in the Okta vault, then reads the Jira Scrum board (read-only).',
     accent: '#0052cc',
     resourceParty: '3P',
     // No user-login step — this flow runs on the service identity.
@@ -73,10 +73,10 @@ export const FLOWS = {
   'secrets-atlassian-token': {
     id: 'secrets-atlassian-token',
     name: 'NHI - Secrets (Atlassian token from OPA)',
-    recommended: 'Recommended',
+    recommended: 'Recommended (workflow sets token in Vault)',
     tagline: 'Service App → Agent → Vaulted Atlassian Token → Jira Scrum Board',
     description:
-      'A service app gets a client_credentials token, the agent swaps it for the Atlassian access token stored in the Okta vault, then reads the Jira Scrum board (read-only). No user login.',
+      'A service app gets a client_credentials token, the agent swaps it for the Atlassian access token stored in the Okta vault, then reads the Jira Scrum board (read-only). ',
     accent: '#0747a6',
     resourceParty: '3P',
     // No user-login step — this flow runs on the service identity.
@@ -95,7 +95,7 @@ export const FLOWS = {
   },
   'service-account': {
     id: 'service-account',
-    name: 'Service Accounts',
+    name: 'HI - Service Accounts',
     tagline: 'Agent → Service Account Creds → Protected MCP',
     description:
       'Exchange the user’s ID token for a service account username/password, then call the inventory MCP using HTTP Basic authentication with those credentials.',
@@ -107,7 +107,7 @@ export const FLOWS = {
     name: 'NHI - Okta Protected Resource',
     tagline: 'Client-credentials → id-JAG → Resource Access Token → Protected MCP',
     description:
-      'A headless service app authenticates with private_key_jwt (client_credentials), then exchanges its service token for an id-JAG and a resource access token',
+      'A service app authenticates with private_key_jwt (client_credentials), then exchanges its service token for an id-JAG and a resource access token',
     accent: '#f59e0b',
     // No user-login step in the sequence — this flow uses a service identity.
     prependLogin: false,
@@ -139,7 +139,7 @@ export const FLOWS = {
   },
   'nhi-a2a': {
     id: 'nhi-a2a',
-    name: 'NHI - A2A',
+    name: 'NHI - A2A - Okta Protected Resource',
     tagline: 'service app → Inventory Agent → Finance Agent → Finance MCP',
     description:
       'Agent-to-agent with a non-human identity: a service app gets a token via client_credentials, then runs the same Inventory Agent → (Org id-JAG) → Finance Agent chain to call the finance MCP.',
@@ -154,7 +154,7 @@ export const FLOWS = {
       badge: 'NHI · NO HUMAN LOGIN',
       title: 'Scheduled Agent-to-Agent',
       blurb:
-        'The same NHI - A2A chain as the chat demo, kicked off by a scheduler instead of a question. This page and its endpoint are unauthenticated — the only identity on the wire is the service app’s, via client_credentials + private_key_jwt.',
+        'The same NHI - A2A - Okta Protected Resource chain as the chat demo, kicked off by a scheduler instead of a question. This page and its endpoint are unauthenticated — the only identity on the wire is the service app’s, via client_credentials + private_key_jwt.',
       toolLabel: 'Finance tool',
       tools: [
         { value: 'get_customer_arr', label: 'Customer ARR' },
@@ -164,7 +164,7 @@ export const FLOWS = {
   },
   'sts-github': {
     id: 'sts-github',
-    name: 'STS Broker (GitHub)',
+    name: 'HI - STS Broker (GitHub)',
     tagline: 'Agent → STS Brokered Consent → Resource Token → Protected GitHub Resource',
     description:
       'Exchange the user’s ID token for a GitHub access token brokered by Okta. If consent is needed, Okta returns interaction_required — authorize, then retry — and the agent reads the repository’s pull requests with the brokered token.',

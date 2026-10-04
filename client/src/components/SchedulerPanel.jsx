@@ -60,7 +60,6 @@ export default function SchedulerPanel({ flow, onSteps }) {
     <div className="scheduler-panel">
       <span className="mode-badge">{cfg.badge}</span>
       <h2>{cfg.title}</h2>
-      <p className="scheduler-blurb">{cfg.blurb}</p>
 
       <div className="scheduler-config">
         <label>
