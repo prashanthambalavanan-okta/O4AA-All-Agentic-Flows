@@ -18,7 +18,7 @@ The home page offers five flows. All run against **real Okta** (no mock mode).
 | **Cross-App Access** | T1 login → T2 **id-JAG** → T3 **access token** → T4 **MCP** | Identity Assertion Authorization Grant: exchange the user's `id_token` for an id-JAG, then a resource access token, then call a token-validated MCP tool. |
 | **Secrets** | T1 login → T2 **vaulted secret** → T3 **MCP (Basic)** | Exchange the user's `id_token` for a vaulted secret (Okta Privileged Access), then call the MCP with HTTP Basic auth using the retrieved credentials. |
 | **Service Accounts** | T1 login → T2 **service account** → T3 **MCP (Basic)** | Exchange for a service-account username/password, then call the MCP with HTTP Basic auth. |
-| **NHI - Cross-App Access** | T1 **client_credentials** → T2 **id-JAG** → T3 **access token** → T4 **MCP** | A non-human/service identity: a headless app authenticates with `private_key_jwt` (client credentials), then runs the XAA chain — no user involved. |
+| **NHI - Okta Protected Resource** | T1 **client_credentials** → T2 **id-JAG** → T3 **access token** → T4 **MCP** | A non-human/service identity: a headless app authenticates with `private_key_jwt` (client credentials), then runs the XAA chain — no user involved. |
 | **STS Broker (GitHub)** | T1 login → T2 **brokered token** (consent loop) → T3 **read / create PR** | Exchange for an Okta-brokered GitHub token. If consent is needed Okta returns `interaction_required` → authorize → retry. Then read or create a pull request. Includes a **Revoke** action to re-trigger consent. |
 
 ### Auth at a glance

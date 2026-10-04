@@ -16,7 +16,7 @@
 - Know your audience's pain point going in — it changes which flow you lead with:
   - "How do we let an AI agent call our APIs without minting API keys everywhere?" → lead with **HI - Cross-App Access**
   - "We have secrets/passwords hardcoded in agent config today" → lead with **Secrets**
-  - "We're worried about long-lived service account creds for bots/agents" → lead with **Service Accounts** or **NHI - Cross-App Access**
+  - "We're worried about long-lived service account creds for bots/agents" → lead with **Service Accounts** or **NHI - Okta Protected Resource**
   - "Agents will talk to other agents — how do we scope that?" → lead with **HI - A2A** / **NHI - A2A**
   - "Agents need to act on GitHub/Slack/SaaS on the user's behalf" → lead with **STS Broker (GitHub)**
   - "We're a SAML shop, OIDC is the exception not the rule" → lead with **HI - SAML - Cross-App Access**
@@ -24,7 +24,7 @@
 ### Timing options
 
 - **Elevator (10 min):** HI - Cross-App Access → STS Broker (GitHub)
-- **Standard (20 min):** HI - Cross-App Access → Secrets → NHI - Cross-App Access → HI - A2A → STS Broker (GitHub)
+- **Standard (20 min):** HI - Cross-App Access → Secrets → NHI - Okta Protected Resource → HI - A2A → STS Broker (GitHub)
 - **Full technical deep-dive (35–40 min):** All 9 flows, in the order below
 
 ---
@@ -130,7 +130,7 @@
 
 ---
 
-## Flow 6 — NHI - Cross-App Access
+## Flow 6 — NHI - Okta Protected Resource
 
 **Use case:** The **machine-to-machine** version of Flow 1 — no human ever logs in. This is the one to show anyone worried about "shadow" non-human identities running scheduled agent jobs.
 
@@ -138,7 +138,7 @@
 
 **Token to point at:** There's no `id_token` at all here — start from the **client_credentials service token**, then the same id-JAG → access-token chain. Explicitly say "no human identity touched this."
 
-**Setup:** Click **NHI - Cross-App Access** → suggestion (no login step — call this out before clicking).
+**Setup:** Click **NHI - Okta Protected Resource** → suggestion (no login step — call this out before clicking).
 
 **Talk track:**
 
@@ -221,7 +221,7 @@
 - **HI - SAML - Cross-App Access** — 3 min — token: refresh token (from SAML assertion) — human login: yes (SAML)
 - **Secrets** — 3 min — token: vaulted secret — human login: yes
 - **Service Accounts** — 2 min — token: service-account username/password — human login: yes
-- **NHI - Cross-App Access** — 3 min — token: `client_credentials` service token → id-JAG — human login: no
+- **NHI - Okta Protected Resource** — 3 min — token: `client_credentials` service token → id-JAG — human login: no
 - **HI - A2A** — 4 min — token: second id-JAG (Finance Agent) — human login: yes
 - **NHI - A2A** — 2 min — token: `client_credentials` → layered id-JAG — human login: no
 - **STS Broker (GitHub)** — 5 min — token: Okta-brokered GitHub access token — human login: yes

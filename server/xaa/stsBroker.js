@@ -13,13 +13,21 @@ const CLIENT_ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-b
  * resource (GitHub) access token at the org token endpoint. If Okta has no stored
  * tokens yet it returns HTTP 400 interaction_required + an interaction_uri; after
  * the user consents, the agent retries the identical request and gets HTTP 200.
+ *
+ * `ov` — per-run overrides from the step-by-step runner; every field falls back to the
+ * value used today, so the chat path (which passes no `ov`) is unchanged.
  */
-export async function requestResourceToken(idToken) {
+export async function requestResourceToken(idToken, ov = {}) {
+  const tokenUrl = ov.tokenUrl ?? config.sts.tokenUrl;
+  const resource = ov.resource ?? config.sts.resource;
+  const scope = ov.scope ?? config.sts.scopes;
+
   const clientAssertion = await buildClientAssertion({
-    clientId: config.agent.clientId,
-    audience: config.sts.assertionAudience,
-    kid: config.agent.kid,
-    privateKeyFile: config.agent.privateKeyFile,
+    clientId: ov.clientId ?? config.agent.clientId,
+    audience: ov.assertionAudience ?? config.sts.assertionAudience,
+    kid: ov.kid ?? config.agent.kid,
+    privateKeyFile: ov.privateKeyFile ?? config.agent.privateKeyFile,
+    privateKeyPem: ov.privateKeyPem,
   });
 
   const bodyParams = {
@@ -27,15 +35,15 @@ export async function requestResourceToken(idToken) {
     requested_token_type: TOKEN_TYPE_OAUTH_STS,
     subject_token: idToken,
     subject_token_type: TOKEN_TYPE_ID_TOKEN,
-    resource: config.sts.resource,
+    resource,
     client_assertion_type: CLIENT_ASSERTION_TYPE,
     client_assertion: clientAssertion,
   };
-  if (config.sts.scopes) bodyParams.scope = config.sts.scopes;
+  if (scope) bodyParams.scope = scope;
 
   const { captured, responseBody, ok } = await captureFormPost(
     { id: 'T2', title: 'Resource Token Exchange', badge: 'STS', from: 'Agent', to: 'Okta Org Server', tokenField: 'access_token' },
-    config.sts.tokenUrl,
+    tokenUrl,
     {},
     bodyParams
   );
@@ -56,9 +64,14 @@ export async function requestResourceToken(idToken) {
 
 /**
  * T3 — Read GitHub pull requests using the brokered access token.
+ *
+ * `ov` — per-run overrides from the step-by-step runner (repo coordinates), defaulted to
+ * config so the chat path is unchanged.
  */
-export async function readPullRequests(accessToken) {
-  const { apiBaseUrl, owner, repo } = config.github;
+export async function readPullRequests(accessToken, ov = {}) {
+  const apiBaseUrl = ov.apiBaseUrl ?? config.github.apiBaseUrl;
+  const owner = ov.owner ?? config.github.owner;
+  const repo = ov.repo ?? config.github.repo;
   const url = `${apiBaseUrl}/repos/${owner}/${repo}/pulls?state=all&per_page=5`;
 
   const { captured, responseBody, ok } = await captureGet(
@@ -74,8 +87,14 @@ export async function readPullRequests(accessToken) {
  * T3 (create) — Open a GitHub pull request with the brokered token. This is a
  * write call, so it genuinely exercises the token's permissions.
  */
-export async function openPullRequest(accessToken) {
-  const { apiBaseUrl, owner, repo, base, head, title, body } = config.github;
+export async function openPullRequest(accessToken, ov = {}) {
+  const apiBaseUrl = ov.apiBaseUrl ?? config.github.apiBaseUrl;
+  const owner = ov.owner ?? config.github.owner;
+  const repo = ov.repo ?? config.github.repo;
+  const base = ov.base ?? config.github.base;
+  const head = ov.head ?? config.github.head;
+  const title = ov.title ?? config.github.title;
+  const body = ov.body ?? config.github.body;
   const url = `${apiBaseUrl}/repos/${owner}/${repo}/pulls`;
   const prBody = { title, head, base, body };
 

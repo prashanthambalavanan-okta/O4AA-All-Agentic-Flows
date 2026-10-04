@@ -6,7 +6,7 @@ import {
   TOKEN_TYPE_ID_TOKEN,
   TOKEN_TYPE_ACCESS_TOKEN,
 } from '../xaa/tokenExchange.js';
-import { requestVaultedSecret, requestServiceAccount } from '../xaa/credentialExchange.js';
+import { requestVaultedSecret, requestServiceAccount, requestAtlassianSecret, requestAtlassianTokenSecret } from '../xaa/credentialExchange.js';
 import { requestServiceToken, requestServiceIdJag, exchangeServiceIdJag } from '../xaa/serviceFlow.js';
 import { exchangeSamlForRefreshToken, exchangeRefreshForIdJag } from '../xaa/samlFlow.js';
 import { requestResourceToken, readPullRequests, openPullRequest, revokeStsToken } from '../xaa/stsBroker.js';
@@ -16,144 +16,15 @@ import {
   requestIdJagForFinance,
   exchangeForFinanceToken,
 } from '../xaa/a2aFlow.js';
+import { requestAtlassianToken, readScrumBoardIssues, summarizeBoardIssues, pickAccessToken } from '../xaa/atlassian.js';
 import { callMcpTool } from '../mcp/inventoryServer.js';
 import { validateAccessToken } from '../util/verifyToken.js';
-import { decodeJwt } from '../util/jwt.js';
+// Step builders and answer summarizer are shared with the step-by-step runner.
+import { buildMcpStep, validateBasic, buildBasicMcpStep, summarize } from '../xaa/mcpStep.js';
+import { routeTool, routeFinanceTool } from '../xaa/toolRouter.js';
+import { requireFlowAuth } from './authGate.js';
 
 const router = Router();
-
-// Deterministic routing of a question to an MCP tool.
-function routeTool(question) {
-  const q = (question || '').toLowerCase();
-  if (q.includes('shipment') || q.includes('shipping') || q.includes('delivery')) {
-    return 'get_last_5_shipments';
-  }
-  // inventory / stock / default
-  return 'get_inventory_details';
-}
-
-// Finance (A2A) tool routing.
-function routeFinanceTool(question) {
-  const q = (question || '').toLowerCase();
-  if (q.includes('payment') || q.includes('invoice') || q.includes('billing')) {
-    return 'get_customer_payment_details';
-  }
-  return 'get_customer_arr';
-}
-
-function maskToken(t) {
-  if (!t || t.length < 24) return t;
-  return `${t.slice(0, 12)}…${t.slice(-8)}`;
-}
-
-// Build the MCP tool-call step manually — it's an in-process call, not HTTP, but we
-// render it with the same shape and show the bearer access token in use.
-function buildMcpStep(toolName, accessToken, result, validation, opts = {}) {
-  const { id = 'T4', from = 'Agent', to = 'Inventory MCP' } = opts;
-  const status = validation.ok ? 200 : validation.verified ? 403 : 401;
-  const body = validation.ok
-    ? { tokenValidation: validation, data: result }
-    : {
-        error: validation.verified ? 'insufficient_scope' : 'invalid_token',
-        error_description: validation.verified
-          ? `Token is missing required scope(s): ${validation.requiredScopes.join(', ')}`
-          : `Access token failed validation${validation.error ? ` (${validation.error})` : ''}`,
-        tokenValidation: validation,
-      };
-  return {
-    id,
-    title: `MCP Tool Call · ${toolName}`,
-    badge: 'MCP',
-    from,
-    to,
-    ok: validation.ok,
-    request: {
-      method: 'POST',
-      url: `${config.agent.resource || 'mcp://inventory/'}tools/call`,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${maskToken(accessToken)}`,
-      },
-      body: JSON.stringify({ method: 'tools/call', params: { name: toolName, arguments: {} } }, null, 2),
-    },
-    response: { status, headers: { 'Content-Type': 'application/json' }, body },
-    token: decodeJwt(accessToken),
-    code: `# MCP tools/call with the resource access token\ncurl -X POST '<mcp-endpoint>/tools/call' \\\n  -H 'Authorization: Bearer ${maskToken(accessToken)}' \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify({ name: toolName, arguments: {} })}'`,
-  };
-}
-
-// T3 of the Secrets / Service Account flows: call the MCP with HTTP Basic auth
-// using the retrieved credentials. The MCP validates them against config.mcpBasic.
-function validateBasic(creds) {
-  return !!(
-    config.mcpBasic.username &&
-    config.mcpBasic.password &&
-    creds &&
-    creds.username === config.mcpBasic.username &&
-    creds.password === config.mcpBasic.password
-  );
-}
-
-function buildBasicMcpStep(toolName, creds, result, ok) {
-  const masked = '•'.repeat(Math.max(4, (creds?.password || '').length));
-  const encoded = Buffer.from(`${creds?.username || ''}:${masked}`).toString('base64');
-  const status = ok ? 200 : 401;
-  const body = ok
-    ? { basicAuth: { username: creds.username, validated: true }, data: result }
-    : {
-        error: 'invalid_credentials',
-        error_description: 'The presented Basic credentials did not match the MCP server configuration.',
-        basicAuth: { username: creds?.username, validated: false },
-      };
-  return {
-    id: 'T3',
-    title: `MCP Tool Call · ${toolName}`,
-    badge: 'MCP',
-    from: 'Agent',
-    to: 'Inventory MCP',
-    ok,
-    request: {
-      method: 'POST',
-      url: 'mcp://inventory/tools/call',
-      headers: { 'Content-Type': 'application/json', Authorization: `Basic ${encoded}` },
-      body: JSON.stringify({ method: 'tools/call', params: { name: toolName, arguments: {} } }, null, 2),
-    },
-    response: { status, headers: { 'Content-Type': 'application/json' }, body },
-    token: null,
-    code: `# MCP tools/call with HTTP Basic auth (creds from the secret/service account)\ncurl -X POST '<mcp-endpoint>/tools/call' \\\n  -u '${creds?.username || '<username>'}:<password>' \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify({ name: toolName, arguments: {} })}'`,
-  };
-}
-
-function summarize(toolName, result) {
-  if (toolName === 'get_inventory_details') {
-    const low = result.items.filter((i) => i.quantity <= i.reorderLevel);
-    const lines = result.items.map((i) => `• ${i.name} (${i.sku}) — ${i.quantity} in stock @ ${i.location}`);
-    let answer = `Here are the current inventory details (${result.count} SKUs):\n\n${lines.join('\n')}`;
-    if (low.length) {
-      answer += `\n\n⚠️ ${low.length} item(s) at or below reorder level: ${low.map((i) => i.sku).join(', ')}.`;
-    }
-    return answer;
-  }
-  if (toolName === 'get_last_5_shipments') {
-    const lines = result.shipments.map(
-      (s) => `• ${s.id} — ${s.status} via ${s.carrier} → ${s.destination} (${s.items} items, ${s.date})`
-    );
-    return `Here are the last ${result.count} shipments:\n\n${lines.join('\n')}`;
-  }
-  if (toolName === 'get_customer_arr') {
-    const lines = result.customers.map(
-      (c) => `• ${c.customer} (${c.segment}) — $${c.arr.toLocaleString()} ARR, renews ${c.renewalDate} [${c.health}]`
-    );
-    return `Customer ARR (${result.count}):\n\n${lines.join('\n')}`;
-  }
-  if (toolName === 'get_customer_payment_details') {
-    const lines = result.payments.map(
-      (p) => `• ${p.customer} — ${p.invoice}: $${p.amount.toLocaleString()} ${p.status} via ${p.method} (${p.date})`
-    );
-    return `Customer payment details (${result.count}):\n\n${lines.join('\n')}`;
-  }
-  return JSON.stringify(result, null, 2);
-}
 
 // Cross-App Access: id-JAG → access token → token-validated MCP call.
 // subjectToken/subjectTokenType feed T2 — the user's id_token for 'xaa', or the
@@ -286,6 +157,59 @@ async function runCredentialFlow(flow, idToken, toolName, steps) {
   return summarize(toolName, result);
 }
 
+// NHI · Secrets (Atlassian): service client_credentials → vaulted Atlassian client id/secret
+// → Atlassian token → Scrum board issues. No user login anywhere in the chain.
+async function runAtlassianFlow(steps) {
+  if (!config.atlassian.resource) {
+    return 'Atlassian flow is not configured — set ATLASSIAN_SECRETS_RESOURCE (plus ATLASSIAN_BOARD_ID / ATLASSIAN_CLOUD_ID).';
+  }
+  if (!config.service.clientId || !config.service.privateKeyFile) {
+    return 'Service App is not configured — set SERVICE_CLIENT_ID and SERVICE_PRIVATE_KEY_FILE.';
+  }
+  const t1 = await requestServiceToken();
+  steps.push(t1.step);
+  if (!t1.ok) return 'The client_credentials request failed — see step T1 for the error response.';
+
+  const t2 = await requestAtlassianSecret(t1.token);
+  steps.push(t2.step);
+  if (!t2.ok) return 'The vaulted secret request failed — see step T2 for the error response.';
+
+  const t3 = await requestAtlassianToken(t2.raw);
+  steps.push(t3.step);
+  if (!t3.ok) return 'The Atlassian token request failed — see step T3 for the error response.';
+
+  const t4 = await readScrumBoardIssues(t3.accessToken);
+  steps.push(t4.step);
+  if (!t4.ok) return t4.error || 'The Atlassian board read failed — see step T4 for the response.';
+  return summarizeBoardIssues(t4.issues);
+}
+
+// NHI · Secrets (Atlassian token from OPA): service client_credentials → vaulted Atlassian
+// ACCESS TOKEN → Scrum board issues. No Atlassian token call, no user login.
+async function runAtlassianTokenFlow(steps) {
+  if (!config.atlassianToken.resource) {
+    return 'Atlassian token flow is not configured — set ATLASSIAN_TOKEN_SECRETS_RESOURCE (plus ATLASSIAN_BOARD_ID).';
+  }
+  if (!config.service.clientId || !config.service.privateKeyFile) {
+    return 'Service App is not configured — set SERVICE_CLIENT_ID and SERVICE_PRIVATE_KEY_FILE.';
+  }
+  const t1 = await requestServiceToken();
+  steps.push(t1.step);
+  if (!t1.ok) return 'The client_credentials request failed — see step T1 for the error response.';
+
+  const t2 = await requestAtlassianTokenSecret(t1.token);
+  steps.push(t2.step);
+  if (!t2.ok) return 'The vaulted secret request failed — see step T2 for the error response.';
+
+  const atlassianToken = pickAccessToken(t2.raw);
+  if (!atlassianToken) return 'The vaulted secret did not contain an Atlassian access token — see step T2.';
+
+  const t3 = await readScrumBoardIssues(atlassianToken, 'T3');
+  steps.push(t3.step);
+  if (!t3.ok) return t3.error || 'The Atlassian board read failed — see step T3 for the response.';
+  return summarizeBoardIssues(t3.issues);
+}
+
 // Service App: client_credentials → id-JAG → access token → token-validated MCP call.
 async function runServiceFlow(toolName, steps) {
   if (!config.service.clientId || !config.service.privateKeyFile) {
@@ -376,18 +300,8 @@ async function runStsGithubFlow(idToken, steps, action) {
 router.post('/ask', async (req, res) => {
   const { question, flow = 'xaa' } = req.body;
 
-  // A2A flows use the A2A login context; other user flows use the regular login.
-  if (flow === 'hi-a2a') {
-    if (!req.session.a2aAccessToken) return res.status(401).json({ error: 'not_authenticated' });
-  } else if (flow === 'nhi-a2a') {
-    if (!req.session.user && !req.session.a2aUser) return res.status(401).json({ error: 'not_authenticated' });
-  } else if (flow === 'hi-saml') {
-    if (!req.session.samlAssertion) return res.status(401).json({ error: 'not_authenticated' });
-  } else if (flow === 'xaa-webapp') {
-    if (!req.session.webappAccessToken) return res.status(401).json({ error: 'not_authenticated' });
-  } else if (!req.session.user) {
-    return res.status(401).json({ error: 'not_authenticated' });
-  }
+  const authError = requireFlowAuth(flow, req);
+  if (authError) return res.status(401).json(authError);
 
   const toolName = routeTool(question);
   const steps = [];
@@ -397,6 +311,10 @@ router.post('/ask', async (req, res) => {
     let interaction;
     if (flow === 'secrets' || flow === 'service-account') {
       answer = await runCredentialFlow(flow, req.session.idToken, toolName, steps);
+    } else if (flow === 'secrets-atlassian-token') {
+      answer = await runAtlassianTokenFlow(steps);
+    } else if (flow === 'secrets-atlassian') {
+      answer = await runAtlassianFlow(steps);
     } else if (flow === 'client-credentials') {
       answer = await runServiceFlow(toolName, steps);
     } else if (flow === 'sts-github') {
@@ -457,6 +375,6 @@ router.post('/sts/revoke', async (req, res) => {
 
 // Reused by the unauthenticated scheduler routes — both flows already run on a
 // pure service identity, so calling them outside of a user session is legitimate.
-export { runServiceFlow, runNhiA2aFlow };
+export { runServiceFlow, runNhiA2aFlow, runAtlassianFlow, runAtlassianTokenFlow };
 
 export default router;

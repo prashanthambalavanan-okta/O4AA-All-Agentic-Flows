@@ -33,17 +33,22 @@ function assertionErrorStep(id, title, badge, url, err) {
  * Token exchange with subject_token_type=saml2, requested_token_type=refresh_token.
  * The agent authenticates with its private_key_jwt client assertion (same cert as XAA).
  * scope = openid offline_access.
+ *
+ * `ov` — per-run overrides from the step-by-step runner; every field falls back to the
+ * value used today, so the chat path (no `ov`) is unchanged.
  */
-export async function exchangeSamlForRefreshToken(samlAssertion) {
+export async function exchangeSamlForRefreshToken(samlAssertion, ov = {}) {
+  const tokenUrl = ov.tokenUrl ?? config.saml.tokenUrl;
+
   let clientAssertion;
   try {
-    clientAssertion = await buildSamlAgentClientAssertion();
+    clientAssertion = await buildSamlAgentClientAssertion(ov);
   } catch (err) {
     console.error('[SAML T2] client_assertion signing failed:', err);
-    return { ...assertionErrorStep('T2', 'SAML → Refresh Token', 'Refresh Token', config.saml.tokenUrl, err), refreshToken: null };
+    return { ...assertionErrorStep('T2', 'SAML → Refresh Token', 'Refresh Token', tokenUrl, err), refreshToken: null };
   }
 
-  const scope = 'openid offline_access';
+  const scope = ov.scope ?? 'openid offline_access';
   const bodyParams = {
     grant_type: GRANT_TOKEN_EXCHANGE,
     subject_token: samlAssertion,
@@ -56,7 +61,7 @@ export async function exchangeSamlForRefreshToken(samlAssertion) {
 
   const { captured, responseBody, ok } = await captureFormPost(
     { id: 'T2', title: 'SAML → Refresh Token', badge: 'Refresh Token', from: 'Agent', to: 'IdP' },
-    config.saml.tokenUrl,
+    tokenUrl,
     {},
     bodyParams
   );
@@ -73,13 +78,19 @@ export async function exchangeSamlForRefreshToken(samlAssertion) {
  * Token exchange with subject_token_type=refresh_token, requested_token_type=id-jag.
  * audience = the resource authorization server; scope = the resource scope(s).
  */
-export async function exchangeRefreshForIdJag(refreshToken) {
+export async function exchangeRefreshForIdJag(refreshToken, ov = {}) {
+  const tokenUrl = ov.tokenUrl ?? config.saml.tokenUrl;
+  const audience = ov.audience ?? config.agent.audience;
+  // Note: T3 asks for the RESOURCE scopes (not the agent scopes T2 used).
+  const scope = ov.scope ?? config.resource.scopes;
+  const resource = ov.resource ?? config.agent.resource;
+
   let clientAssertion;
   try {
-    clientAssertion = await buildSamlAgentClientAssertion();
+    clientAssertion = await buildSamlAgentClientAssertion(ov);
   } catch (err) {
     console.error('[SAML T3] client_assertion signing failed:', err);
-    return { ...assertionErrorStep('T3', 'Token Exchange', 'ID-JAG', config.saml.tokenUrl, err), idJag: null };
+    return { ...assertionErrorStep('T3', 'Token Exchange', 'ID-JAG', tokenUrl, err), idJag: null };
   }
 
   const bodyParams = {
@@ -87,16 +98,16 @@ export async function exchangeRefreshForIdJag(refreshToken) {
     subject_token: refreshToken,
     subject_token_type: TOKEN_TYPE_REFRESH,
     requested_token_type: TOKEN_TYPE_ID_JAG,
-    audience: config.agent.audience,
-    scope: config.resource.scopes,
+    audience,
+    scope,
     client_assertion_type: CLIENT_ASSERTION_TYPE,
     client_assertion: clientAssertion,
   };
-  if (config.agent.resource) bodyParams.resource = config.agent.resource;
+  if (resource) bodyParams.resource = resource;
 
   const { captured, responseBody, ok } = await captureFormPost(
     { id: 'T3', title: 'Token Exchange', badge: 'ID-JAG', from: 'Agent', to: 'IdP', tokenField: 'access_token' },
-    config.saml.tokenUrl,
+    tokenUrl,
     {},
     bodyParams
   );

@@ -15,8 +15,9 @@ export default function Chat({ loginStep, flow }) {
     },
   ]);
   const [input, setInput] = useState('');
-  // Flows that act on the user's behalf show the login as T1; the service-app flow does not.
-  const baseSteps = flow.prependLogin !== false && loginStep ? [loginStep] : [];
+  // Flows that act on the user's behalf show the login (T0 authorize + T1 token exchange for
+  // OIDC flows, or a single T1 for SAML); the service-app flow does not.
+  const baseSteps = flow.prependLogin !== false && loginStep ? (Array.isArray(loginStep) ? loginStep : [loginStep]) : [];
   const [steps, setSteps] = useState(baseSteps);
   const [busy, setBusy] = useState(false);
   const [interaction, setInteraction] = useState(null); // { uri } when consent is required

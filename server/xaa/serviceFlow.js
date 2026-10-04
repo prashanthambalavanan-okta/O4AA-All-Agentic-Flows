@@ -12,13 +12,18 @@ const CLIENT_ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-b
  * T1 — Client Credentials. The service app authenticates with private_key_jwt and
  * obtains its own access token. `cfg` is the service config (config.service for the
  * NHI flow, config.a2a.service for NHI - A2A).
+ *
+ * This function's cfg object *is* the override seam the step-by-step runner uses: it
+ * passes `{ ...config.service, ...overrides }`, which is why `privateKeyPem` is read
+ * from cfg here (it is absent from the config objects, so the chat path is unchanged).
  */
 export async function requestServiceToken(cfg = config.service) {
   const clientAssertion = await buildClientAssertion({
     clientId: cfg.clientId,
-    audience: cfg.t1TokenUrl,
+    audience: cfg.assertionAudience ?? cfg.t1TokenUrl,
     kid: cfg.kid,
     privateKeyFile: cfg.privateKeyFile,
+    privateKeyPem: cfg.privateKeyPem,
   });
 
   const bodyParams = {
@@ -42,31 +47,43 @@ export async function requestServiceToken(cfg = config.service) {
 
 /**
  * T2 — Token Exchange → id-JAG, using the service token as the subject token.
+ *
+ * `ov` — per-run overrides from the step-by-step runner; every field falls back to the
+ * value used today, so the chat path (no `ov`) is unchanged. Note the assertion audience
+ * here is the SERVICE token endpoint, not `config.agent.assertionAudience` — which is why
+ * this stays on `buildClientAssertion` rather than the shared agent helper.
  */
-export async function requestServiceIdJag(serviceToken) {
+export async function requestServiceIdJag(serviceToken, ov = {}) {
+  const tokenUrl = ov.tokenUrl ?? config.service.tokenUrl;
+  const audience = ov.audience ?? config.agent.audience;
+  const subjectTokenType = ov.subjectTokenType ?? config.service.subjectTokenType;
+  const scope = ov.scope ?? config.service.idJagScopes;
+  const resource = ov.resource ?? config.agent.resource;
+
   // T2 client_assertion: iss/sub = AGENT_CLIENT_ID, signed with the AGENT cert.
   const clientAssertion = await buildClientAssertion({
-    clientId: config.agent.clientId,
-    audience: config.service.tokenUrl,
-    kid: config.agent.kid,
-    privateKeyFile: config.agent.privateKeyFile,
+    clientId: ov.clientId ?? config.agent.clientId,
+    audience: ov.assertionAudience ?? tokenUrl,
+    kid: ov.kid ?? config.agent.kid,
+    privateKeyFile: ov.privateKeyFile ?? config.agent.privateKeyFile,
+    privateKeyPem: ov.privateKeyPem,
   });
 
   const bodyParams = {
     grant_type: GRANT_TOKEN_EXCHANGE,
     subject_token: serviceToken,
-    subject_token_type: config.service.subjectTokenType,
+    subject_token_type: subjectTokenType,
     requested_token_type: TOKEN_TYPE_ID_JAG,
-    audience: config.agent.audience,
+    audience,
     client_assertion_type: CLIENT_ASSERTION_TYPE,
     client_assertion: clientAssertion,
   };
-  if (config.service.idJagScopes) bodyParams.scope = config.service.idJagScopes;
-  if (config.agent.resource) bodyParams.resource = config.agent.resource;
+  if (scope) bodyParams.scope = scope;
+  if (resource) bodyParams.resource = resource;
 
   const { captured, responseBody, ok } = await captureFormPost(
     { id: 'T2', title: 'Token Exchange', badge: 'ID-JAG', from: 'Agent', to: 'IdP', tokenField: 'access_token' },
-    config.service.tokenUrl,
+    tokenUrl,
     {},
     bodyParams
   );
@@ -78,12 +95,15 @@ export async function requestServiceIdJag(serviceToken) {
  * T3 — JWT-Bearer → Access Token at the resource auth server. Authenticated as the
  * agent: client_assertion iss/sub = AGENT_CLIENT_ID, signed with the agent cert.
  */
-export async function exchangeServiceIdJag(idJag) {
+export async function exchangeServiceIdJag(idJag, ov = {}) {
+  const tokenUrl = ov.tokenUrl ?? config.resource.tokenUrl;
+
   const clientAssertion = await buildClientAssertion({
-    clientId: config.agent.clientId,
-    audience: config.resource.tokenUrl,
-    kid: config.agent.kid,
-    privateKeyFile: config.agent.privateKeyFile,
+    clientId: ov.clientId ?? config.agent.clientId,
+    audience: ov.assertionAudience ?? tokenUrl,
+    kid: ov.kid ?? config.agent.kid,
+    privateKeyFile: ov.privateKeyFile ?? config.agent.privateKeyFile,
+    privateKeyPem: ov.privateKeyPem,
   });
 
   const bodyParams = {
@@ -95,7 +115,7 @@ export async function exchangeServiceIdJag(idJag) {
 
   const { captured, responseBody, ok } = await captureFormPost(
     { id: 'T3', title: 'Access Token Request', badge: 'Access Token', from: 'Agent', to: 'Auth Server', tokenField: 'access_token' },
-    config.resource.tokenUrl,
+    tokenUrl,
     {},
     bodyParams
   );

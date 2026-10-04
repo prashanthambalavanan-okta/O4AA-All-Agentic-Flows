@@ -31,6 +31,7 @@ body {
   padding: 12px 20px; background: var(--bg); color: #fff;
   border-bottom: 1px solid #1c2433;
 }
+.header-left { display: flex; align-items: center; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
 .brand-name { font-weight: 700; letter-spacing: .2px; }
@@ -181,6 +182,8 @@ body {
 .card-route { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
 .card-route .arrow { color: var(--accent); }
 .card-badge { margin-left: auto; font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 6px; }
+/* T0 carries an authorization code, not a token — kept off the green token palette. */
+.badge-authorization-code { background: #fff7ed; color: #c2410c; }
 .badge-id-jag { background: #dcfce7; color: var(--green-deep); }
 .badge-access-token { background: #dcfce7; color: var(--green-deep); }
 .badge-mcp { background: #e0e7ff; color: #4338ca; }
@@ -335,6 +338,14 @@ body {
 }
 .party-1p { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
 .party-3p { background: #fff7ed; color: #b45309; border: 1px solid #fed7aa; }
+.flow-warning {
+  margin-top: 8px; color: #dc2626; font-size: 11px; font-weight: 700;
+  letter-spacing: .3px; text-transform: uppercase;
+}
+.flow-recommended {
+  margin-top: 8px; color: #16a34a; font-size: 11px; font-weight: 700;
+  letter-spacing: .3px; text-transform: uppercase;
+}
 .flow-go {
   flex: 0 0 auto; color: var(--accent); font-weight: 700; font-size: 12px;
   transition: transform .14s ease;

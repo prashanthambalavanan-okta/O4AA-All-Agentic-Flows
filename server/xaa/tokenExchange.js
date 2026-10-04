@@ -16,13 +16,21 @@ export { TOKEN_TYPE_ID_TOKEN };
  * Agent authenticates to the IdP with a private_key_jwt client assertion and
  * exchanges the subject token (the user's id_token, or a web app's access_token)
  * for an Identity Assertion Authorization Grant.
+ *
+ * `ov` — per-run overrides from the step-by-step runner. Every field falls back to
+ * config, so the chat path (which passes no `ov`) behaves exactly as before.
  */
-export async function requestIdJag(subjectToken, subjectTokenType = TOKEN_TYPE_ID_TOKEN) {
+export async function requestIdJag(subjectToken, subjectTokenType = TOKEN_TYPE_ID_TOKEN, ov = {}) {
+  const tokenUrl = ov.tokenUrl ?? config.agent.tokenUrl;
+  const audience = ov.audience ?? config.agent.audience;
+  const scope = ov.scope ?? config.agent.scopes;
+  const resource = ov.resource ?? config.agent.resource;
+
   // Signing can throw (key not found, not PKCS#8, wrong alg) — surface it as a
   // failed T2 step rather than crashing the request with no visible cause.
   let clientAssertion;
   try {
-    clientAssertion = await buildAgentClientAssertion();
+    clientAssertion = await buildAgentClientAssertion(ov);
   } catch (err) {
     console.error('[T2] client_assertion signing failed:', err);
     return {
@@ -33,7 +41,7 @@ export async function requestIdJag(subjectToken, subjectTokenType = TOKEN_TYPE_I
         from: 'Agent',
         to: 'IdP',
         ok: false,
-        request: { method: 'POST', url: config.agent.tokenUrl, headers: {}, body: '(request not sent — client_assertion could not be built)' },
+        request: { method: 'POST', url: tokenUrl, headers: {}, body: '(request not sent — client_assertion could not be built)' },
         response: { status: 0, headers: {}, body: { error: 'client_assertion_error', error_description: err.message } },
         token: null,
         code: '',
@@ -48,12 +56,12 @@ export async function requestIdJag(subjectToken, subjectTokenType = TOKEN_TYPE_I
     subject_token: subjectToken,
     subject_token_type: subjectTokenType,
     requested_token_type: TOKEN_TYPE_ID_JAG,
-    audience: config.agent.audience,
-    scope: config.agent.scopes,
+    audience,
+    scope,
     client_assertion_type: CLIENT_ASSERTION_TYPE,
     client_assertion: clientAssertion,
   };
-  if (config.agent.resource) bodyParams.resource = config.agent.resource;
+  if (resource) bodyParams.resource = resource;
 
   const { captured, responseBody, ok } = await captureFormPost(
     {
@@ -64,7 +72,7 @@ export async function requestIdJag(subjectToken, subjectTokenType = TOKEN_TYPE_I
       to: 'IdP',
       tokenField: 'access_token', // the id-JAG is returned in access_token (token_type: N_A)
     },
-    config.agent.tokenUrl,
+    tokenUrl,
     {},
     bodyParams
   );
@@ -79,8 +87,9 @@ export async function requestIdJag(subjectToken, subjectTokenType = TOKEN_TYPE_I
  * `clientIdOverride` — the id-JAG's minting client_id when it isn't AGENT_CLIENT_ID
  * (e.g. hi-saml's AGENT_CLIENT_ID_SAML), so redemption authenticates as that same client.
  */
-export async function exchangeForAccessToken(idJag, clientIdOverride) {
-  const clientAssertion = await buildResourceClientAssertion(clientIdOverride);
+export async function exchangeForAccessToken(idJag, clientIdOverride, ov = {}) {
+  const tokenUrl = ov.tokenUrl ?? config.resource.tokenUrl;
+  const clientAssertion = await buildResourceClientAssertion(clientIdOverride, ov);
 
   const bodyParams = {
     grant_type: GRANT_JWT_BEARER,
@@ -98,7 +107,7 @@ export async function exchangeForAccessToken(idJag, clientIdOverride) {
       to: 'Auth Server',
       tokenField: 'access_token',
     },
-    config.resource.tokenUrl,
+    tokenUrl,
     {},
     bodyParams
   );

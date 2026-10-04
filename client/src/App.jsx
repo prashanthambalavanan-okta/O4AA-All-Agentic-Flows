@@ -85,18 +85,20 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
+        <div className="header-left">
+          {state.authenticated && flow && (
+            <button className="btn-ghost" onClick={() => setFlowId(null)}>
+              ← Home
+            </button>
+          )}
         <div className="brand">
           <span className="brand-dot" />
           <span className="brand-name">Okta for AI</span>
           <span className="brand-sub">{flow ? flow.name : 'Use Case Patterns'}</span>
         </div>
+        </div>
         {state.authenticated && (
           <div className="header-user">
-            {flow && (
-              <button className="btn-ghost" onClick={() => setFlowId(null)}>
-                ← Home
-              </button>
-            )}
             <span>{displayUser?.name || displayUser?.email || displayUser?.sub || ''}</span>
             <button className="btn-ghost" onClick={handleLogout}>
               Sign out

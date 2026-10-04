@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { runScheduled } from '../api.js';
-import CodeBlock from './CodeBlock.jsx';
 
 const MIN_INTERVAL_SECONDS = 5;
 const MAX_RUNS = 20;
@@ -56,8 +55,6 @@ export default function SchedulerPanel({ flow, onSteps }) {
     clearInterval(timerRef.current);
     setRunning(false);
   }
-
-  const curl = `curl -X POST '${window.location.origin}/api/scheduler/run' \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify({ flow: flow.id, tool })}'`;
 
   return (
     <div className="scheduler-panel">
@@ -130,9 +127,6 @@ export default function SchedulerPanel({ flow, onSteps }) {
           );
         })}
       </div>
-
-      <p className="scheduler-hint">Or drive it from any scheduler:</p>
-      <CodeBlock text={curl} label="curl" />
     </div>
   );
 }

@@ -47,6 +47,52 @@ export const FLOWS = {
     accent: '#3b82f6',
     suggestions: INVENTORY_SUGGESTIONS,
   },
+  'secrets-atlassian': {
+    id: 'secrets-atlassian',
+    name: 'NHI - Secrets (Atlassian id/secret from OPA)',
+    warning: 'Not recommended',
+    tagline: 'Service App → Agent → Vaulted Atlassian id/secret → Atlassian Token → Jira Scrum Board',
+    description:
+      'A service app gets a client_credentials token, the agent swaps it for the Atlassian client id/secret in the Okta vault, then reads the Jira Scrum board (read-only). No user login.',
+    accent: '#0052cc',
+    resourceParty: '3P',
+    // No user-login step — this flow runs on the service identity.
+    prependLogin: false,
+    suggestions: [
+      { label: 'Get Scrum board tasks', text: 'Get Scrum board tasks' },
+    ],
+    scheduler: {
+      badge: 'NHI · NO HUMAN LOGIN',
+      title: 'Scheduled Task',
+      blurb:
+        'The same NHI - Secrets (Atlassian id/secret from OPA) chain as the chat demo, kicked off by a scheduler instead of a question. This page and its endpoint are unauthenticated — the only identity on the wire is the service app’s, via client_credentials + private_key_jwt.',
+      toolLabel: 'Atlassian task',
+      tools: [{ value: 'get_scrum_board_tasks', label: 'Scrum board tasks' }],
+    },
+  },
+  'secrets-atlassian-token': {
+    id: 'secrets-atlassian-token',
+    name: 'NHI - Secrets (Atlassian token from OPA)',
+    recommended: 'Recommended',
+    tagline: 'Service App → Agent → Vaulted Atlassian Token → Jira Scrum Board',
+    description:
+      'A service app gets a client_credentials token, the agent swaps it for the Atlassian access token stored in the Okta vault, then reads the Jira Scrum board (read-only). No user login.',
+    accent: '#0747a6',
+    resourceParty: '3P',
+    // No user-login step — this flow runs on the service identity.
+    prependLogin: false,
+    suggestions: [
+      { label: 'Get Scrum board tasks', text: 'Get Scrum board tasks' },
+    ],
+    scheduler: {
+      badge: 'NHI · NO HUMAN LOGIN',
+      title: 'Scheduled Task',
+      blurb:
+        'The same NHI - Secrets (Atlassian token from OPA) chain as the chat demo, kicked off by a scheduler instead of a question. This page and its endpoint are unauthenticated — the only identity on the wire is the service app’s, via client_credentials + private_key_jwt.',
+      toolLabel: 'Atlassian task',
+      tools: [{ value: 'get_scrum_board_tasks', label: 'Scrum board tasks' }],
+    },
+  },
   'service-account': {
     id: 'service-account',
     name: 'Service Accounts',
@@ -58,19 +104,19 @@ export const FLOWS = {
   },
   'client-credentials': {
     id: 'client-credentials',
-    name: 'NHI - Cross-App Access',
+    name: 'NHI - Okta Protected Resource',
     tagline: 'Client-credentials → id-JAG → Resource Access Token → Protected MCP',
     description:
-      'A headless service app authenticates with private_key_jwt (client_credentials), then exchanges its service token for an id-JAG and a resource access token — like Cross-App Access, but with a service identity instead of a user.',
+      'A headless service app authenticates with private_key_jwt (client_credentials), then exchanges its service token for an id-JAG and a resource access token',
     accent: '#f59e0b',
     // No user-login step in the sequence — this flow uses a service identity.
     prependLogin: false,
     suggestions: INVENTORY_SUGGESTIONS,
     scheduler: {
       badge: 'NHI · NO HUMAN LOGIN',
-      title: 'Scheduled Cross-App Access',
+      title: 'Scheduled Task',
       blurb:
-        'The same NHI - Cross-App Access chain as the chat demo, kicked off by a scheduler instead of a question. This page and its endpoint are unauthenticated — the only identity on the wire is the service app’s, via client_credentials + private_key_jwt.',
+        'The same NHI - Okta Protected Resource chain as the chat demo, kicked off by a scheduler instead of a question. This page and its endpoint are unauthenticated — the only identity on the wire is the service app’s, via client_credentials + private_key_jwt.',
       toolLabel: 'Inventory tool',
       tools: [
         { value: 'get_inventory_details', label: 'Inventory details' },

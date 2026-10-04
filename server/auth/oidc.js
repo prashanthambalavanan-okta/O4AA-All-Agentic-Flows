@@ -95,6 +95,37 @@ export async function initOidc() {
 }
 
 /**
+ * Build the synthesized T0 "Authorization Request" step. /authorize is a full-page
+ * browser redirect, not a fetch this server awaits — so unlike the other captured
+ * steps, the "response" here is reconstructed: the 302 Okta sends back to
+ * `redirect_uri` once the user authenticates, carrying the code we later exchange at T1.
+ */
+function buildAuthorizeStep(oktaCfg, authorizeUrl, state) {
+  const location = `${oktaCfg.redirectUri}?code=<authorization_code>&state=${state}`;
+  return {
+    id: 'T0',
+    title: 'Authorization Request',
+    badge: 'Authorization Code',
+    from: 'User',
+    to: 'IdP',
+    ok: true,
+    request: {
+      method: 'GET',
+      url: authorizeUrl,
+      headers: {},
+      body: '',
+    },
+    response: {
+      status: 302,
+      headers: { Location: location },
+      body: '',
+    },
+    token: null,
+    code: `curl -i '${authorizeUrl}'\n\n# Browser authenticates at the IdP, then:\nHTTP/1.1 302 Found\nLocation: ${location}`,
+  };
+}
+
+/**
  * Build the captured T1 "User Login" step from the token set. `oktaCfg` selects the
  * regular or A2A app's issuer/client.
  */
@@ -163,6 +194,7 @@ router.get('/login', (req, res, next) => {
     state,
     nonce,
   });
+  req.session.pkce.authorizeUrl = url;
   res.redirect(url);
 });
 
@@ -189,7 +221,10 @@ router.get('/callback', async (req, res, next) => {
     req.session.idToken = tokenSet.id_token;
     // Kept for the STS revoke path, which reads the `uid` claim out of the access token.
     req.session.accessToken = tokenSet.access_token;
-    req.session.loginStep = buildLoginStep(tokenSet, config.okta);
+    req.session.loginStep = [
+      buildAuthorizeStep(config.okta, pkce.authorizeUrl, pkce.state),
+      buildLoginStep(tokenSet, config.okta),
+    ];
     delete req.session.pkce;
 
     const flow = req.session.pendingFlow;
@@ -220,7 +255,9 @@ router.get('/a2a/login', (req, res, next) => {
   };
   if (config.a2a.inventoryAgent.resource) authParams.resource = config.a2a.inventoryAgent.resource;
 
-  res.redirect(a2aClient.authorizationUrl(authParams));
+  const url = a2aClient.authorizationUrl(authParams);
+  req.session.a2aPkce.authorizeUrl = url;
+  res.redirect(url);
 });
 
 router.get('/a2a/callback', async (req, res, next) => {
@@ -245,7 +282,10 @@ router.get('/a2a/callback', async (req, res, next) => {
     req.session.a2aUser = { sub: claims.sub, name: claims.name, email: claims.email };
     req.session.a2aIdToken = tokenSet.id_token;
     req.session.a2aAccessToken = tokenSet.access_token;
-    req.session.a2aLoginStep = buildLoginStep(tokenSet, config.a2a.okta);
+    req.session.a2aLoginStep = [
+      buildAuthorizeStep(config.a2a.okta, a2aPkce.authorizeUrl, a2aPkce.state),
+      buildLoginStep(tokenSet, config.a2a.okta),
+    ];
     delete req.session.a2aPkce;
 
     const flow = req.session.pendingFlow;
@@ -277,7 +317,9 @@ router.get('/webapp/login', (req, res, next) => {
   };
   if (config.webapp.resource) authParams.resource = config.webapp.resource;
 
-  res.redirect(webappClient.authorizationUrl(authParams));
+  const url = webappClient.authorizationUrl(authParams);
+  req.session.webappPkce.authorizeUrl = url;
+  res.redirect(url);
 });
 
 router.get('/webapp/callback', async (req, res, next) => {
@@ -301,7 +343,10 @@ router.get('/webapp/callback', async (req, res, next) => {
     const claims = tokenSet.claims();
     req.session.webappUser = { sub: claims.sub, name: claims.name, email: claims.email };
     req.session.webappAccessToken = tokenSet.access_token;
-    req.session.webappLoginStep = buildLoginStep(tokenSet, config.webapp);
+    req.session.webappLoginStep = [
+      buildAuthorizeStep(config.webapp, webappPkce.authorizeUrl, webappPkce.state),
+      buildLoginStep(tokenSet, config.webapp),
+    ];
     delete req.session.webappPkce;
 
     const flow = req.session.pendingFlow;

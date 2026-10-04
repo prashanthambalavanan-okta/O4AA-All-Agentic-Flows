@@ -304,6 +304,32 @@ export const config = {
     resource: process.env.SECRETS_RESOURCE,
   },
 
+  // NHI · Secrets (Atlassian) flow — T1 service client_credentials (config.service), T2 pulls the Atlassian client id/secret from the vault,
+  // T3 trades them for an Atlassian token, T4 reads the Scrum board's issues.
+  atlassian: {
+    tokenUrl: ORG_TOKEN_URL,
+    assertionAudience: ORG_TOKEN_URL,
+    resource: process.env.ATLASSIAN_SECRETS_RESOURCE,
+    // T2 subject is the service app's access token from T1 (client_credentials).
+    subjectTokenType: process.env.ATLASSIAN_SUBJECT_TOKEN_TYPE || 'urn:ietf:params:oauth:token-type:access_token',
+    oauthTokenUrl: process.env.ATLASSIAN_TOKEN_URL || 'https://api.atlassian.com/oauth/token',
+    apiBaseUrl: process.env.ATLASSIAN_API_BASE_URL || 'https://api.atlassian.com',
+    audience: process.env.ATLASSIAN_AUDIENCE || 'api.atlassian.com',
+    scope: process.env.ATLASSIAN_SCOPE || 'read:board-scope:jira-software read:issue-details:jira',
+    cloudId: process.env.ATLASSIAN_CLOUD_ID,
+    boardId: process.env.ATLASSIAN_BOARD_ID,
+    maxResults: Number(process.env.ATLASSIAN_MAX_RESULTS) || 10,
+  },
+
+  // NHI · Secrets (Atlassian token from OPA) — the vaulted secret IS the Atlassian access
+  // token, so there is no Atlassian token call. Board/site settings come from `atlassian`.
+  atlassianToken: {
+    tokenUrl: ORG_TOKEN_URL,
+    assertionAudience: ORG_TOKEN_URL,
+    resource: process.env.ATLASSIAN_TOKEN_SECRETS_RESOURCE,
+    subjectTokenType: process.env.ATLASSIAN_SUBJECT_TOKEN_TYPE || 'urn:ietf:params:oauth:token-type:access_token',
+  },
+
   // Service Account flow (T2) — service-account token exchange at the org token endpoint.
   serviceAccount: {
     tokenUrl: ORG_TOKEN_URL,

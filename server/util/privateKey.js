@@ -45,6 +45,30 @@ export function loadPrivateKey(privateKeyFile) {
 }
 
 /**
+ * Same as loadPrivateKey, but for a PEM string supplied at runtime (the step-by-step
+ * runner lets an operator paste a key instead of pointing at a file on disk). Cached on
+ * the PEM's digest so repeated signings with the same pasted key don't re-parse it.
+ * The PEM is never written to disk.
+ */
+export function loadPrivateKeyPem(pem) {
+  if (!pem || !pem.trim()) throw new Error('No private key PEM supplied.');
+  const cacheKey = `pem:${crypto.createHash('sha256').update(pem).digest('hex')}`;
+  if (keyCache.has(cacheKey)) return keyCache.get(cacheKey);
+
+  let key;
+  try {
+    key = crypto.createPrivateKey(pem);
+  } catch (err) {
+    throw new Error(`Could not parse the supplied private key: ${err.message}`);
+  }
+  if (key.asymmetricKeyType !== 'rsa') {
+    throw new Error(`The supplied private key is '${key.asymmetricKeyType}', but RS256 requires an RSA key.`);
+  }
+  keyCache.set(cacheKey, key);
+  return key;
+}
+
+/**
  * Build the private JWKS that openid-client signs private_key_jwt client
  * assertions with: `new issuer.Client(metadata, jwks)`.
  *

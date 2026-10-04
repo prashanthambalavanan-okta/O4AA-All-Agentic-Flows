@@ -6,7 +6,7 @@ const SECTIONS = [
     eyebrow: 'Single Agent',
     title: 'Single Agent Use Cases',
     blurb: 'One agent acting for a human or a service identity to reach a protected resource.',
-    flows: ['xaa', 'xaa-webapp', 'hi-saml', 'client-credentials', 'secrets', 'service-account', 'sts-github'],
+    flows: ['xaa', 'xaa-webapp', 'hi-saml', 'client-credentials', 'secrets', 'secrets-atlassian', 'secrets-atlassian-token', 'service-account', 'sts-github'],
   },
   {
     eyebrow: 'Agent → Agent',
@@ -48,6 +48,8 @@ function FlowCard({ f, onSelect }) {
         </span>
         <span className="flow-go">Open →</span>
       </div>
+      {f.warning && <div className="flow-warning">{f.warning}</div>}
+      {f.recommended && <div className="flow-recommended">{f.recommended}</div>}
     </button>
   );
 }
