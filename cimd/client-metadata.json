@@ -1,0 +1,31 @@
+{
+  "client_id": "https://<YOUR-HOST>/<path>/client-metadata.json",
+  "client_name": "O4AA-Authentication-Pattern-CIMD",
+  "client_uri": "https://o4aa-agent-flows.onrender.com",
+  "redirect_uris": [
+    "http://localhost:8080/api/authp/cimd/callback",
+    "https://o4aa-agent-flows.onrender.com/api/authp/cimd/callback"
+  ],
+  "grant_types": [
+    "authorization_code",
+    "urn:ietf:params:oauth:grant-type:token-exchange",
+    "urn:ietf:params:oauth:grant-type:jwt-bearer"
+  ],
+  "response_types": [
+    "code"
+  ],
+  "token_endpoint_auth_method": "private_key_jwt",
+  "token_endpoint_auth_signing_alg": "RS256",
+  "jwks": {
+    "keys": [
+      {
+        "kty": "RSA",
+        "n": "0fqkm477vYOsGr1DOlavd96_kKF5HbYEDgdlf1dlaD-kWXfAM7FAIUh8yFrNzf2Zxn_Za7uVlZ98PzQDBrqlklaLg5c7KGCRD3wCh6XfUkfzJsOK3YHr8WUNLydKPjXPMgy7rmek_46gsxnQAmv43NZlQjLcuMggb_if305c-fD_RVs25hzHDenKmmbEyTz_CQVuw_-C0c0FwOcrhHcffdr9nhq7W2exnqRNymNfeifibKJn3yAkObeCoy7699IKLk2iWuW92e9vu-YNpR1ijqsdEJQVKf3NCiGPRhJC3Qau5xPdvKBfdnDLKxFV6pRIY25d0wqLNREBDQFYFkk8zQ",
+        "e": "AQAB",
+        "kid": "ua9HWsSUyJWiTr61hsbbupPGnz5D50v4nZ2yF5uvxcI",
+        "alg": "RS256",
+        "use": "sig"
+      }
+    ]
+  }
+}

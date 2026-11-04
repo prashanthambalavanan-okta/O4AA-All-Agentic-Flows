@@ -22,7 +22,8 @@ import { validateAccessToken } from '../util/verifyToken.js';
 // Step builders and answer summarizer are shared with the step-by-step runner.
 import { buildMcpStep, validateBasic, buildBasicMcpStep, summarize } from '../xaa/mcpStep.js';
 import { routeTool, routeFinanceTool } from '../xaa/toolRouter.js';
-import { requireFlowAuth } from './authGate.js';
+import { requireFlowAuth, requireValidSubjectToken } from './authGate.js';
+import { runAuthPatternFlow } from '../xaa/authPatternFlow.js';
 
 const router = Router();
 
@@ -303,6 +304,13 @@ router.post('/ask', async (req, res) => {
   const authError = requireFlowAuth(flow, req);
   if (authError) return res.status(401).json(authError);
 
+  // Expired subject token: end the session here; the client returns to the login page.
+  const expired = requireValidSubjectToken(flow, req);
+  if (expired) {
+    console.log(`[ask] ${flow}: ${expired.error_description}`);
+    return req.session.destroy(() => res.status(401).json(expired));
+  }
+
   const toolName = routeTool(question);
   const steps = [];
 
@@ -329,6 +337,10 @@ router.post('/ask', async (req, res) => {
       answer = await runHiA2aFlow(req.session.a2aAccessToken, routeFinanceTool(question), steps);
     } else if (flow === 'nhi-a2a') {
       answer = await runNhiA2aFlow(routeFinanceTool(question), steps);
+    } else if (flow.startsWith('authp-')) {
+      // Authentication Patterns: the agent's own login id_token → id-JAG → access token → MCP.
+      const pattern = flow.slice('authp-'.length);
+      answer = await runAuthPatternFlow(pattern, req.session.authp?.[pattern]?.idToken, toolName, steps);
     } else if (flow === 'xaa-webapp') {
       answer = await runXaaFlow(req.session.webappAccessToken, TOKEN_TYPE_ACCESS_TOKEN, toolName, steps);
     } else {

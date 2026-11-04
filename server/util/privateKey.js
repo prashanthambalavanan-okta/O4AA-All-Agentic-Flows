@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { exportJWK } from 'jose';
+import { exportJWK, calculateJwkThumbprint } from 'jose';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -88,4 +88,21 @@ export async function privateJwks({ privateKeyFile, kid }) {
   const jwks = { keys: [{ ...jwk, kid, alg: 'RS256', use: 'sig' }] };
   jwkCache.set(cacheKey, jwks);
   return jwks;
+}
+
+/**
+ * Public JWKS for a key file — what a CIMD client publishes at its jwks_uri so the
+ * authorization server can verify its private_key_jwt assertions. `kid` defaults to the
+ * RFC 7638 JWK thumbprint, so it is stable and never needs to be typed anywhere.
+ * Returns { kid, jwks }.
+ */
+export async function publicJwks({ privateKeyFile, kid }) {
+  const cacheKey = `public:${privateKeyFile}#${kid || ''}`;
+  if (jwkCache.has(cacheKey)) return jwkCache.get(cacheKey);
+  const publicKey = crypto.createPublicKey(loadPrivateKey(privateKeyFile));
+  const jwk = await exportJWK(publicKey);
+  const resolvedKid = kid || (await calculateJwkThumbprint(jwk));
+  const out = { kid: resolvedKid, jwks: { keys: [{ ...jwk, kid: resolvedKid, alg: 'RS256', use: 'sig' }] } };
+  jwkCache.set(cacheKey, out);
+  return out;
 }

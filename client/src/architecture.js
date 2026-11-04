@@ -685,3 +685,120 @@ export const ARCHITECTURE = {
     A-->>U: Pull request shown in the agent UI`,
   },
 };
+
+// ── Authentication Patterns ──
+// Same chain as 'xaa' (Login as agent); only the agent's client authentication at
+// T1/T2/T3 differs. One builder keeps the four entries consistent.
+const AUTH_PATTERN_ARCH = {
+  pkjwt: {
+    usedFor:
+      'Used for confidential agents — server-side agents that can keep a private key safe: backend services, cloud-hosted agents, agents whose keys sit in a KMS, HSM or vault. The key never leaves the agent and nothing reusable goes over the wire.',
+    how: 'private_key_jwt — a short-lived JWT (iss=sub=client_id, aud=the token endpoint) signed with the agent’s private key',
+    wire: 'client_assertion_type + client_assertion=<signed JWT>',
+    summary:
+      'The agent holds a private key; Okta holds only the matching public JWK. At every /token call the agent signs a fresh, 5-minute client assertion bound to that exact endpoint, so there is nothing reusable to steal from the wire or from Okta.',
+  },
+  secret: {
+    usedFor:
+      'Used for confidential agents with a shared secret — server-side agents where a shared secret is acceptable: internal tools, prototypes, platforms that only support client secrets. The secret has to be stored, rotated and protected wherever the agent runs.',
+    how: 'client_secret_basic — the client_id and shared client secret in an HTTP Basic Authorization header',
+    wire: 'Authorization: Basic base64(client_id:client_secret)',
+    summary:
+      'The agent and Okta share a secret. It is simple to set up, but the secret is a long-lived bearer credential: whoever has it can act as the agent until it is rotated, and it has to live wherever the agent runs.',
+  },
+  public: {
+    usedFor:
+      "Used for public agents — agents that run where a credential can't be kept secret: desktop and CLI agents, local MCP clients on a user's laptop, browser extensions, mobile apps. They rely on PKCE and a registered redirect URI, with the user present.",
+    how: 'none — a public client that sends only its client_id; PKCE binds the code to this login, but nothing authenticates the software itself',
+    wire: 'client_id=<client_id> (no secret, no assertion)',
+    summary:
+      'A public client cannot keep a credential, so it does not present one. PKCE still stops a stolen authorization code from being redeemed, but at T2/T3 anyone who knows the client_id can claim to be this agent. Shown for contrast; Okta may require a confidential client for token exchange.',
+  },
+  cimd: {
+    usedFor:
+      "Used for open-ecosystem agents — agents that aren't registered in Okta ahead of time, such as third-party MCP clients and AI apps connecting to many authorization servers. Their identity is tied to an HTTPS domain they control. They can be confidential (signing with keys published at jwks_uri) or public.",
+    how: 'Client ID Metadata Document — the client_id is an HTTPS URL; Okta fetches that JSON to learn the redirect_uris and jwks_uri, then verifies a private_key_jwt against the published keys',
+    wire: 'client_id=<metadata URL> + client_assertion=<JWT signed with a key published at jwks_uri>',
+    summary:
+      'Instead of pre-registering the agent and pasting keys into the console, the agent describes itself in a metadata document it hosts at its client_id URL. Okta resolves that URL, trusts the domain, and verifies the agent’s signed assertion against the jwks_uri the document names — key rotation is just a change to the hosted JWKS.',
+  },
+};
+
+function authPatternArchitecture(pattern) {
+  const a = AUTH_PATTERN_ARCH[pattern];
+  const cimdFetch =
+    pattern === 'cimd'
+      ? `
+    IdP->>A: GET client_id URL (metadata document)
+    A-->>IdP: redirect_uris, jwks_uri, token_endpoint_auth_method
+    IdP->>A: GET jwks_uri
+    A-->>IdP: Agent public keys`
+      : '';
+  return {
+    summary: `${a.usedFor} ${a.summary} The chain is otherwise identical to HI - Cross-App Access (Login as agent): the agent is the OIDC client, its id_token is exchanged for an id-JAG, the id-JAG for a resource access token, and the inventory MCP validates that token.`,
+    steps: [
+      {
+        id: 'T0',
+        title: 'Authorization Request',
+        from: 'User (browser)',
+        to: 'Okta (IdP)',
+        description:
+          'The agent redirects the browser to /authorize with its client_id, response_type=code and PKCE (S256).' +
+          (pattern === 'cimd' ? ' Because the client_id is a URL, Okta fetches the metadata document first to validate the redirect_uri.' : ''),
+      },
+      {
+        id: 'T1',
+        title: 'Agent Login',
+        from: 'Agent',
+        to: 'Okta (IdP)',
+        description: `The agent redeems the code at /token, authenticating with ${a.how}. On the wire: ${a.wire}.`,
+      },
+      {
+        id: 'T2',
+        title: 'Token Exchange → id-JAG',
+        from: 'Agent',
+        to: 'Okta (IdP)',
+        description: `RFC 8693 token-exchange: subject_token = the id_token from T1, requested_token_type = id-JAG. Same client authentication: ${a.wire}.`,
+      },
+      {
+        id: 'T3',
+        title: 'Access Token Request',
+        from: 'Agent',
+        to: 'Resource Auth Server',
+        description: `RFC 7523 JWT-Bearer grant with assertion = the id-JAG. The resource auth server authenticates the same agent the same way (${a.wire}).`,
+      },
+      {
+        id: 'T4',
+        title: 'MCP Tool Call',
+        from: 'Agent',
+        to: 'Inventory MCP',
+        description: 'Bearer access token; the MCP verifies its signature (JWKS) and required scope before running the tool.',
+      },
+    ],
+    diagram: `sequenceDiagram
+    participant U as User (browser)
+    participant A as Agent (OIDC client)
+    participant IdP as Okta (IdP)
+    participant R as Resource Auth Server
+    participant M as Inventory MCP
+
+    U->>A: Open the agent app, start the flow
+    A-->>U: Redirect to Okta /authorize (code + PKCE)
+    U->>IdP: T0 GET /authorize, then authenticate${cimdFetch}
+    IdP-->>U: T0 302 to agent /callback with code
+    U->>A: GET /callback with code
+    A->>IdP: T1 POST /token (code + verifier + ${pattern === 'public' ? 'client_id only' : pattern === 'secret' ? 'client secret' : 'private_key_jwt'})
+    IdP-->>A: id_token (held in the agent session)
+    A->>IdP: T2 Token Exchange (subject: id_token)
+    IdP-->>A: id-JAG
+    A->>R: T3 JWT-Bearer (assertion: id-JAG)
+    R-->>A: Access Token
+    A->>M: T4 Tool call (Bearer Access Token)
+    M-->>A: Validated response
+    A-->>U: Answer rendered in the agent UI`,
+  };
+}
+
+for (const pattern of Object.keys(AUTH_PATTERN_ARCH)) {
+  ARCHITECTURE[`authp-${pattern}`] = authPatternArchitecture(pattern);
+}

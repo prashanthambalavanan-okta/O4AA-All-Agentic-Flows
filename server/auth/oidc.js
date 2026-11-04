@@ -1,12 +1,44 @@
 import { Router } from 'express';
-import { Issuer, generators } from 'openid-client';
+import { Issuer, generators, custom } from 'openid-client';
 import { config } from '../config.js';
 import { decodeJwt } from '../util/jwt.js';
 import { privateJwks } from '../util/privateKey.js';
+import { authPatternsMe } from '../xaa/authPatternFlow.js';
 
 let client = null; // regular login (.env OKTA_*)
 let a2aClient = null; // A2A login (.env.a2a A2A_OKTA_*)
 let webappClient = null; // Web App login (.env WEBAPP_*)
+
+// OIDC 'prompt' values the UI may request (the Force login toggle sends prompt=login,
+// which makes Okta re-authenticate the user even when an Okta session already exists).
+const ALLOWED_PROMPTS = new Set(['login', 'consent', 'select_account', 'none']);
+export function promptParam(req) {
+  const p = String(req.query.prompt || '');
+  return ALLOWED_PROMPTS.has(p) ? { prompt: p } : {};
+}
+
+// ── Capture what each login actually POSTs to /token ──
+// openid-client builds the T1 request itself (including signing the private_key_jwt
+// client_assertion), so we hook its http_options callback — which receives the final
+// form — and stash it keyed by the authorization code. The callback route then takes
+// its own entry, so concurrent logins can never see each other's request.
+const sentTokenRequests = new Map();
+export function captureTokenRequests(oidcClient) {
+  oidcClient[custom.http_options] = (url, options) => {
+    const form = options.form;
+    if (form?.grant_type === 'authorization_code' && form.code) {
+      sentTokenRequests.set(form.code, { url: url.href, form: { ...form }, headers: { ...options.headers } });
+      setTimeout(() => sentTokenRequests.delete(form.code), 60_000).unref();
+    }
+    return {};
+  };
+  return oidcClient;
+}
+export function takeSentTokenRequest(code) {
+  const sent = sentTokenRequests.get(code);
+  sentTokenRequests.delete(code);
+  return sent;
+}
 
 const usesPrivateKeyJwt = (oktaCfg) => oktaCfg.tokenAuthMethod === 'private_key_jwt';
 
@@ -28,7 +60,7 @@ async function buildLoginClient(oktaCfg, label) {
       token_endpoint_auth_method: oktaCfg.tokenAuthMethod,
     });
     console.log(`✓ ${label} ready — ${oktaCfg.tokenAuthMethod} (issuer: ${issuer.metadata.issuer})`);
-    return c;
+    return captureTokenRequests(c);
   }
 
   // openid-client signs the assertion with this JWKS and copies its kid into the
@@ -47,7 +79,7 @@ async function buildLoginClient(oktaCfg, label) {
   console.log(
     `✓ ${label} ready — private_key_jwt (issuer: ${issuer.metadata.issuer}, key: ${oktaCfg.privateKeyFile}, kid: ${oktaCfg.kid})`
   );
-  return c;
+  return captureTokenRequests(c);
 }
 
 /**
@@ -100,7 +132,7 @@ export async function initOidc() {
  * steps, the "response" here is reconstructed: the 302 Okta sends back to
  * `redirect_uri` once the user authenticates, carrying the code we later exchange at T1.
  */
-function buildAuthorizeStep(oktaCfg, authorizeUrl, state) {
+export function buildAuthorizeStep(oktaCfg, authorizeUrl, state) {
   const location = `${oktaCfg.redirectUri}?code=<authorization_code>&state=${state}`;
   return {
     id: 'T0',
@@ -129,35 +161,66 @@ function buildAuthorizeStep(oktaCfg, authorizeUrl, state) {
  * Build the captured T1 "User Login" step from the token set. `oktaCfg` selects the
  * regular or A2A app's issuer/client.
  */
-function buildLoginStep(tokenSet, oktaCfg) {
-  const tokenUrl = `${oktaCfg.issuer.replace(/\/$/, '')}/v1/token`;
-  // Show how the web app authenticated itself: a signed client assertion (no secret)
-  // or, if it's still on the legacy method, its client secret.
-  const clientAuth = usesPrivateKeyJwt(oktaCfg)
-    ? [
-        'client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-        'client_assertion=<signed_jwt>',
-      ]
-    : ['client_secret=<client_secret>'];
+export function buildLoginStep(tokenSet, oktaCfg, opts = {}) {
+  const tokenUrl = opts.tokenUrl || `${oktaCfg.issuer.replace(/\/$/, '')}/v1/token`;
+  // Show how the client authenticated itself: a signed client assertion, its client
+  // secret (header for _basic, body for _post), or nothing at all (public client).
+  const method = oktaCfg.tokenAuthMethod;
+  const clientAuth =
+    method === 'private_key_jwt'
+      ? [
+          'client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+          'client_assertion=<signed_jwt>',
+        ]
+      : method === 'none' || method === 'client_secret_basic'
+      ? []
+      : ['client_secret=<client_secret>'];
+  const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+  if (method === 'client_secret_basic') headers.Authorization = 'Basic <base64(client_id:client_secret)>';
+
+  // The real request openid-client sent (see captureTokenRequests): shows the actual
+  // signed client_assertion, so the card can decode it like T2/T3. Only the shared
+  // secret is masked (the code and verifier are already spent).
+  const sent = opts.sent;
+  let body;
+  let code;
+  if (sent) {
+    const form = { ...sent.form };
+    if (form.client_secret) form.client_secret = '<client_secret>';
+    body = new URLSearchParams(form).toString();
+    code = [
+      `curl -X POST '${sent.url}'`,
+      ...Object.entries(headers).map(([k, v]) => `  -H '${k}: ${v}'`),
+      `  -d '${body}'`,
+    ].join(' \\\n');
+  } else {
+    body = [
+      'grant_type=authorization_code',
+      'code=<authorization_code>',
+      `client_id=${oktaCfg.clientId}`,
+      `redirect_uri=${oktaCfg.redirectUri}`,
+      'code_verifier=<pkce_verifier>',
+      ...clientAuth,
+    ].join('&');
+    code = [
+      `curl -X POST '${tokenUrl}'`,
+      ...Object.entries(headers).map(([k, v]) => `  -H '${k}: ${v}'`),
+      `  -d 'grant_type=authorization_code&code=<code>&client_id=${oktaCfg.clientId}&redirect_uri=${oktaCfg.redirectUri}&code_verifier=<verifier>'`,
+      ...clientAuth.map((p) => `  -d '${p}'`),
+    ].join(' \\\n');
+  }
   return {
     id: 'T1',
-    title: 'User Login',
+    title: opts.title || 'User Login',
     badge: 'Access Token',
-    from: 'User',
+    from: opts.from || 'User',
     to: 'IdP',
     ok: true,
     request: {
       method: 'POST',
-      url: tokenUrl,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: [
-        'grant_type=authorization_code',
-        'code=<authorization_code>',
-        `client_id=${oktaCfg.clientId}`,
-        `redirect_uri=${oktaCfg.redirectUri}`,
-        'code_verifier=<pkce_verifier>',
-        ...clientAuth,
-      ].join('&'),
+      url: sent?.url || tokenUrl,
+      headers,
+      body,
     },
     response: {
       status: 200,
@@ -171,7 +234,7 @@ function buildLoginStep(tokenSet, oktaCfg) {
       },
     },
     token: decodeJwt(tokenSet.access_token) || decodeJwt(tokenSet.id_token),
-    code: `curl -X POST '${tokenUrl}' \\\n  -H 'Content-Type: application/x-www-form-urlencoded' \\\n  -d 'grant_type=authorization_code&code=<code>&redirect_uri=${oktaCfg.redirectUri}&code_verifier=<verifier>' \\\n  -d '${clientAuth.join("' \\\n  -d '")}'`,
+    code,
   };
 }
 
@@ -189,6 +252,7 @@ router.get('/login', (req, res, next) => {
 
   const url = client.authorizationUrl({
     scope: config.okta.scopes,
+    ...promptParam(req),
     code_challenge,
     code_challenge_method: 'S256',
     state,
@@ -223,7 +287,7 @@ router.get('/callback', async (req, res, next) => {
     req.session.accessToken = tokenSet.access_token;
     req.session.loginStep = [
       buildAuthorizeStep(config.okta, pkce.authorizeUrl, pkce.state),
-      buildLoginStep(tokenSet, config.okta),
+      buildLoginStep(tokenSet, config.okta, { sent: takeSentTokenRequest(params.code) }),
     ];
     delete req.session.pkce;
 
@@ -248,6 +312,7 @@ router.get('/a2a/login', (req, res, next) => {
 
   const authParams = {
     scope: config.a2a.okta.scopes,
+    ...promptParam(req),
     code_challenge,
     code_challenge_method: 'S256',
     state,
@@ -284,7 +349,7 @@ router.get('/a2a/callback', async (req, res, next) => {
     req.session.a2aAccessToken = tokenSet.access_token;
     req.session.a2aLoginStep = [
       buildAuthorizeStep(config.a2a.okta, a2aPkce.authorizeUrl, a2aPkce.state),
-      buildLoginStep(tokenSet, config.a2a.okta),
+      buildLoginStep(tokenSet, config.a2a.okta, { sent: takeSentTokenRequest(params.code) }),
     ];
     delete req.session.a2aPkce;
 
@@ -310,6 +375,7 @@ router.get('/webapp/login', (req, res, next) => {
 
   const authParams = {
     scope: config.webapp.scopes,
+    ...promptParam(req),
     code_challenge,
     code_challenge_method: 'S256',
     state,
@@ -345,7 +411,7 @@ router.get('/webapp/callback', async (req, res, next) => {
     req.session.webappAccessToken = tokenSet.access_token;
     req.session.webappLoginStep = [
       buildAuthorizeStep(config.webapp, webappPkce.authorizeUrl, webappPkce.state),
-      buildLoginStep(tokenSet, config.webapp),
+      buildLoginStep(tokenSet, config.webapp, { sent: takeSentTokenRequest(params.code) }),
     ];
     delete req.session.webappPkce;
 
@@ -372,6 +438,8 @@ router.get('/me', (req, res) => {
     webappAuthenticated: !!req.session.webappAccessToken,
     webappUser: req.session.webappUser || null,
     webappLoginStep: req.session.webappLoginStep || null,
+    // Authentication Patterns: { pkjwt|secret|public|cimd: { configured, authenticated, user, loginStep } }
+    authp: authPatternsMe(req.session),
   });
 });
 

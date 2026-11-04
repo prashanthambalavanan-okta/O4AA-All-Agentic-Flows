@@ -11,6 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '..', '.env'), override: true });
 // A2A (agent-to-agent) config lives in its own file to keep it separate.
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.a2a'), override: true });
+// Authentication Patterns (4 agents, one per client-auth method) — also its own file.
+dotenv.config({ path: path.resolve(__dirname, '..', '.env.auth-patterns'), override: true });
 
 const REQUIRED = [
   'SESSION_SECRET',
@@ -76,6 +78,16 @@ const PLACEHOLDER = /your-org\.okta\.com|your-[a-z-]*auth-server-id|your-.*-clie
 const real = (v) => (v && !PLACEHOLDER.test(v) ? v : undefined);
 
 const A2A_OKTA_ISSUER = real(process.env.A2A_OKTA_ISSUER);
+
+// ── Authentication Patterns — config from .env.auth-patterns ──
+// Four agents, same "HI - Cross-App Access (Login as agent)" chain, each authenticating
+// to Okta differently. The agent is the OIDC client for T0/T1 AND the client at T2/T3.
+const APP_BASE_URL = (process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 8080}`).replace(/\/$/, '');
+const AUTHP_ISSUER = process.env.AUTH_PATTERNS_ISSUER || process.env.OKTA_ISSUER;
+const AUTHP_AGENT_AUTH_SERVER = process.env.AUTH_PATTERNS_AGENT_AUTH_SERVER || AGENT_AUTH_SERVER;
+const CIMD_METADATA_PATH = '/api/authp/cimd/client-metadata.json';
+const CIMD_JWKS_PATH = '/api/authp/cimd/jwks.json';
+const authpRedirect = (p) => process.env[`${p.toUpperCase()}_AGENT_REDIRECT_URI`] || `${APP_BASE_URL}/api/authp/${p}/callback`;
 
 export const config = {
   port: Number(process.env.PORT || 8080),
@@ -237,6 +249,62 @@ export const config = {
       issuer: trimUrl(FINANCE_MCP_AUTH_SERVER),
       jwksUri: keysEndpoint(FINANCE_MCP_AUTH_SERVER),
       scopes: process.env.FINANCE_MCP_SCOPES || undefined, // T6 enforced scope
+    },
+  },
+
+  // Authentication Patterns. `agents` is keyed by pattern id (pkjwt | secret | public | cimd);
+  // `tokenAuthMethod` drives how each agent authenticates at T1, T2 and T3.
+  authPatterns: {
+    issuer: AUTHP_ISSUER,
+    scopes: process.env.AUTH_PATTERNS_SCOPES || 'openid profile email',
+    loginTokenUrl: tokenEndpoint(AUTHP_ISSUER),
+    t2TokenUrl: tokenEndpoint(AUTHP_AGENT_AUTH_SERVER),
+    audience: process.env.AUTH_PATTERNS_AUDIENCE || process.env.RESOURCE_AUDIENCE || RESOURCE_AUTH_SERVER,
+    idJagScopes: process.env.AUTH_PATTERNS_IDJAG_SCOPES || process.env.XAA_SCOPES || 'inventory:read',
+    resource: process.env.AUTH_PATTERNS_RESOURCE || undefined,
+    cimd: {
+      metadataPath: CIMD_METADATA_PATH,
+      jwksPath: CIMD_JWKS_PATH,
+      jwksUri: `${APP_BASE_URL}${CIMD_JWKS_PATH}`,
+      clientName: process.env.CIMD_AGENT_CLIENT_NAME || 'O4AA CIMD Agent',
+      clientUri: APP_BASE_URL,
+    },
+    agents: {
+      pkjwt: {
+        id: 'pkjwt',
+        label: 'Public / Private key',
+        clientId: real(process.env.PKJWT_AGENT_CLIENT_ID),
+        tokenAuthMethod: 'private_key_jwt',
+        privateKeyFile: process.env.PKJWT_AGENT_PRIVATE_KEY_FILE || AGENT_PRIVATE_KEY_FILE,
+        kid: process.env.PKJWT_AGENT_KID || AGENT_KID,
+        redirectUri: authpRedirect('pkjwt'),
+      },
+      secret: {
+        id: 'secret',
+        label: 'Client ID / Client secret',
+        clientId: real(process.env.SECRET_AGENT_CLIENT_ID),
+        clientSecret: process.env.SECRET_AGENT_CLIENT_SECRET,
+        tokenAuthMethod: process.env.SECRET_AGENT_TOKEN_AUTH_METHOD || 'client_secret_basic',
+        redirectUri: authpRedirect('secret'),
+      },
+      public: {
+        id: 'public',
+        label: 'Client ID only',
+        clientId: real(process.env.PUBLIC_AGENT_CLIENT_ID),
+        tokenAuthMethod: 'none',
+        redirectUri: authpRedirect('public'),
+      },
+      cimd: {
+        id: 'cimd',
+        label: 'Client ID Metadata Document',
+        // The client_id IS the metadata document URL this app serves.
+        clientId: real(process.env.CIMD_AGENT_CLIENT_ID) || `${APP_BASE_URL}${CIMD_METADATA_PATH}`,
+        tokenAuthMethod: process.env.CIMD_AGENT_TOKEN_AUTH_METHOD || 'private_key_jwt',
+        privateKeyFile: process.env.CIMD_AGENT_PRIVATE_KEY_FILE || AGENT_PRIVATE_KEY_FILE,
+        // Blank = JWK thumbprint of the key (resolved at startup; published in jwks.json).
+        kid: process.env.CIMD_AGENT_KID || undefined,
+        redirectUri: authpRedirect('cimd'),
+      },
     },
   },
 

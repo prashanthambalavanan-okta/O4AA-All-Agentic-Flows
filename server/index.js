@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { config, validateConfig } from './config.js';
 import oidcRouter, { initOidc } from './auth/oidc.js';
 import samlRouter from './auth/saml.js';
+import authPatternsRouter from './auth/authPatterns.js';
 import askRouter from './routes/ask.js';
 import schedulerRouter from './routes/scheduler.js';
 import { initMcp } from './mcp/inventoryServer.js';
@@ -41,6 +42,7 @@ async function main() {
   app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
   app.use('/api', oidcRouter);
   app.use('/api', samlRouter);
+  app.use('/api', authPatternsRouter);
   app.use('/api', askRouter);
   app.use('/api', schedulerRouter);
 

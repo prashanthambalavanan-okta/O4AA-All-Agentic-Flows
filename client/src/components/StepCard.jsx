@@ -4,6 +4,7 @@ import TokenView from './TokenView.jsx';
 import CodeBlock from './CodeBlock.jsx';
 import { jwtParamsFromBody } from '../decodeJwt.js';
 import { describedParamsFromBody } from '../paramGlossary.js';
+import { splitUrl, decodedRequestBody, decodedResponseBody, decodedHeaders } from '../decodeView.js';
 
 const TABS = ['Request', 'Response', 'Token', 'Code'];
 
@@ -43,6 +44,9 @@ function Collapsible({ title, defaultOpen = false, children }) {
 
 export default function StepCard({ step, expanded, onSelect }) {
   const [tab, setTab] = useState('Request');
+  // Decoded (default) URL-decodes params and expands JWTs; Raw shows the exact wire bytes.
+  const [decoded, setDecoded] = useState(true);
+  const url = decoded ? splitUrl(step.request.url) : { base: step.request.url, query: null };
 
   return (
     <div className={`card ${step.ok ? 'card-ok' : 'card-fail'} ${expanded ? 'card-open' : ''}`}>
@@ -60,26 +64,45 @@ export default function StepCard({ step, expanded, onSelect }) {
 
       {expanded && (
         <div className="card-body">
-          <div className="tabs">
-            {TABS.map((t) => (
-              <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-                {t}
-              </button>
-            ))}
+          <div className="tabs-row">
+            <div className="tabs">
+              {TABS.map((t) => (
+                <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+                  {t}
+                </button>
+              ))}
+            </div>
+            {(tab === 'Request' || tab === 'Response') && (
+              <div className="view-toggle" role="group" aria-label="Body view">
+                <button className={decoded ? 'active' : ''} onClick={() => setDecoded(true)}>Decoded</button>
+                <button className={!decoded ? 'active' : ''} onClick={() => setDecoded(false)}>Raw</button>
+              </div>
+            )}
           </div>
+          {step.note && <div className="step-note">{step.note}</div>}
 
           {tab === 'Request' && (
             <div className="tab-panel">
               <div className="url-row">
                 <MethodPill method={step.request.method} />
-                <span className="url">{step.request.url}</span>
+                <span className="url">{url.base}</span>
               </div>
-              <Collapsible title="HEADERS">
+              {url.query && (
+                <div className="query-params">
+                  <h4>QUERY PARAMETERS</h4>
+                  <CodeBlock text={url.query} label="QUERY" mode="form" />
+                </div>
+              )}
+              <Collapsible title="HEADERS" defaultOpen={!!step.expandHeaders}>
                 <JsonView value={step.request.headers} />
               </Collapsible>
               <h4>BODY</h4>
               <CodeBlock
-                text={String(formatBody(step.request.body, step.request.headers))}
+                text={String(
+                  decoded
+                    ? decodedRequestBody(step.request.body, step.request.headers)
+                    : formatBody(step.request.body, step.request.headers)
+                )}
                 label="BODY"
                 mode={bodyHighlightMode(step.request.headers)}
               />
@@ -130,10 +153,10 @@ export default function StepCard({ step, expanded, onSelect }) {
                 </span>
               </div>
               <Collapsible title="HEADERS">
-                <JsonView value={step.response.headers} />
+                <JsonView value={decoded ? decodedHeaders(step.response.headers) : step.response.headers} />
               </Collapsible>
               <h4>BODY</h4>
-              <JsonView value={step.response.body} />
+              <JsonView value={decoded ? decodedResponseBody(step.response.body) : step.response.body} />
             </div>
           )}
 

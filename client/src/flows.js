@@ -178,4 +178,67 @@ export const FLOWS = {
   },
 };
 
+// ── Authentication Patterns ──
+// Four agents, one per client-authentication method. Every one runs the same
+// "HI - Cross-App Access (Login as agent)" chain: the agent is the OIDC client
+// (T0/T1), then T2 id-JAG and T3 resource token — all authenticated the same way.
+const authPattern = (pattern, fields) => ({
+  id: `authp-${pattern}`,
+  authContext: 'authp',
+  authPattern: pattern,
+  note: 'Login as agent · subject id_token',
+  // These cards compare client authentication, not agent/resource ownership.
+  hideParties: true,
+  suggestions: INVENTORY_SUGGESTIONS,
+  ...fields,
+});
+
+export const AUTH_PATTERN_FLOWS = {
+  'authp-pkjwt': authPattern('pkjwt', {
+    name: 'Public / Private Key',
+    tagline: 'private_key_jwt → id-JAG → Resource Access Token → Protected MCP',
+    description:
+      'The agent proves its identity at every /token call with a short-lived JWT signed by its private key. Okta verifies it against the public JWK registered on the agent — no shared secret exists anywhere.',
+    accent: '#16c784',
+    usage: {
+      label: 'Confidential agents',
+      examples: 'Backend services, cloud-hosted agents, keys in KMS / HSM / vault',
+    },
+  }),
+  'authp-secret': authPattern('secret', {
+    name: 'Client ID / Client Secret',
+    tagline: 'client_secret_basic → id-JAG → Resource Access Token → Protected MCP',
+    description:
+      'The agent authenticates with a client ID and a shared client secret (HTTP Basic). Simple, but the secret is a long-lived bearer credential that must be stored, rotated and protected.',
+    accent: '#f59e0b',
+    usage: {
+      label: 'Confidential agents (shared secret)',
+      examples: 'Internal tools, prototypes, platforms that only support client secrets',
+    },
+  }),
+  'authp-public': authPattern('public', {
+    name: 'Client ID Only',
+    tagline: 'client_id (public client) → id-JAG → Resource Access Token → Protected MCP',
+    description:
+      'A public client: the agent sends only its client_id — PKCE protects the authorization code, but nothing proves which software is calling at /token.',
+    accent: '#ef4444',
+    usage: {
+      label: 'Public agents',
+      examples: 'Desktop / CLI agents, local MCP clients, browser extensions, mobile apps',
+    },
+  }),
+  'authp-cimd': authPattern('cimd', {
+    name: 'CIMD (Client ID Metadata Document)',
+    tagline: 'client_id = metadata URL → id-JAG → Resource Access Token → Protected MCP',
+    description:
+      'The client_id is an HTTPS URL to a JSON document this app hosts. Okta fetches it to learn the agent’s redirect URIs and its jwks_uri, then verifies the agent’s private_key_jwt — no pre-registered keys.',
+    accent: '#8b5cf6',
+    usage: {
+      label: 'Open-ecosystem agents',
+      examples: 'Third-party MCP clients and AI apps not pre-registered in Okta',
+    },
+  }),
+};
+Object.assign(FLOWS, AUTH_PATTERN_FLOWS);
+
 export const FLOW_LIST = Object.values(FLOWS);

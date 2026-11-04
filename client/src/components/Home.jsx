@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FLOWS } from '../flows.js';
 
 const SECTIONS = [
@@ -22,6 +22,25 @@ const SECTIONS = [
   },
 ];
 
+// Authentication Patterns tab — same Cross-App Access chain, four ways the agent
+// authenticates to Okta.
+const AUTH_SECTIONS = [
+  {
+    eyebrow: 'Agent Client Authentication',
+    title: 'How an Agent Authenticates with Okta',
+    blurb:
+      'Four agents run the same HI - Cross-App Access (Login as agent) chain — each proves its identity at /token differently.',
+    flows: ['authp-pkjwt', 'authp-secret', 'authp-public', 'authp-cimd'],
+  },
+];
+
+const TABS = [
+  { id: 'agentic', label: 'Agentic Patterns', sections: SECTIONS },
+  { id: 'auth', label: 'Authentication Patterns', sections: AUTH_SECTIONS },
+];
+// Remember the tab across ← Home / login round-trips within the browser session.
+const TAB_KEY = 'o4aa.homeTab';
+
 // Party of the agent and of the resource it reaches: first-party (same org as
 // the IdP) or third-party (an external provider, e.g. GitHub behind the STS
 // broker). Flows default to 1P/1P; a flow overrides via agentParty/resourceParty.
@@ -35,7 +54,7 @@ function Party({ party, kind }) {
   );
 }
 
-function FlowCard({ f, onSelect }) {
+function FlowCard({ f, onSelect, notConfigured }) {
   // cardSuffix (e.g. "(Login as agent)") renders on its own line below the main
   // title; other flow names are shown as-is.
   const title = f.cardSuffix ? f.name.replace(f.cardSuffix, '').trim() : f.name;
@@ -45,22 +64,40 @@ function FlowCard({ f, onSelect }) {
       <h3>{title}</h3>
       {f.cardSuffix && <div className="flow-subtitle">{f.cardSuffix}</div>}
       {f.note && <div className="flow-note">{f.note}</div>}
+      {notConfigured && <div className="flow-warning">Not configured — see .env.auth-patterns</div>}
       <div className="flow-tagline">{f.tagline}</div>
       <p>{f.description}</p>
       <div className="flow-foot">
         <span className="flow-parties">
-          <Party party={f.agentParty || '1P'} kind="Agent" />
-          <Party party={f.resourceParty || '1P'} kind="Resource" />
+          {!f.hideParties && (
+            <>
+              <Party party={f.agentParty || '1P'} kind="Agent" />
+              <Party party={f.resourceParty || '1P'} kind="Resource" />
+            </>
+          )}
         </span>
         <span className="flow-go">Open →</span>
       </div>
       {f.warning && <div className="flow-warning">{f.warning}</div>}
       {f.recommended && <div className="flow-recommended">{f.recommended}</div>}
+      {f.usage && (
+        <div className="flow-usage">
+          <span className="flow-usage-tag">{f.usage.label}</span>
+          <span className="flow-usage-examples">Examples: {f.usage.examples}</span>
+        </div>
+      )}
     </button>
   );
 }
 
-export default function Home({ onSelect }) {
+export default function Home({ onSelect, authp = {} }) {
+  const [tabId, setTabId] = useState(() => sessionStorage.getItem(TAB_KEY) || 'agentic');
+  const tab = TABS.find((t) => t.id === tabId) || TABS[0];
+  const chooseTab = (id) => {
+    sessionStorage.setItem(TAB_KEY, id);
+    setTabId(id);
+  };
+
   return (
     <div className="home">
       <div className="home-head">
@@ -68,7 +105,21 @@ export default function Home({ onSelect }) {
         <p>Each use case logs in once (T1), then walks the agent’s token exchange step by step.</p>
       </div>
 
-      {SECTIONS.map((s) => {
+      <div className="home-tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={t.id === tab.id}
+            className={`home-tab ${t.id === tab.id ? 'active' : ''}`}
+            onClick={() => chooseTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab.sections.map((s) => {
         const flows = s.flows.map((id) => FLOWS[id]).filter(Boolean);
         if (!flows.length) return null;
         return (
@@ -83,7 +134,12 @@ export default function Home({ onSelect }) {
             </div>
             <div className="home-grid">
               {flows.map((f) => (
-                <FlowCard key={f.id} f={f} onSelect={onSelect} />
+                <FlowCard
+                  key={f.id}
+                  f={f}
+                  onSelect={onSelect}
+                  notConfigured={f.authPattern && authp[f.authPattern]?.configured === false}
+                />
               ))}
             </div>
           </section>

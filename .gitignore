@@ -7,3 +7,4 @@ keys/*.pem
 keys/*.key
 *.log
 .DS_Store
+.env.auth-patterns

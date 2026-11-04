@@ -1,10 +1,11 @@
 import React from 'react';
 import { login } from '../api.js';
 
-export default function Login() {
+export default function Login({ notice }) {
   return (
     <div className="login">
       <div className="login-card">
+        {notice && <div className="login-notice">{notice}</div>}
         <h1>Okta for AI - Use Case Patterns</h1>
         <p>
           Sign in to chat with an agent that uses <strong>Okta Cross-App Access</strong>,{' '}

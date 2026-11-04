@@ -267,6 +267,18 @@ body {
 .home-head h1 { margin: 0 0 3px; font-size: 22px; font-weight: 650; letter-spacing: -0.5px; }
 .home-head p { margin: 0; color: var(--muted); font-size: 13px; }
 
+/* Home tabs — "Agentic Patterns" / "Authentication Patterns". */
+.home-tabs {
+  flex: 0 0 auto; align-self: center; display: flex; gap: 4px; padding: 4px;
+  background: #f1f4f3; border: 1px solid var(--line); border-radius: 999px;
+}
+.home-tab {
+  background: none; border: none; border-radius: 999px; padding: 7px 18px;
+  color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.home-tab:hover { color: var(--ink, #111); }
+.home-tab.active { background: #fff; color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+
 /* Sections — sized to their content, never stretched. */
 .home-section {
   flex: 0 0 auto; width: 100%; max-width: 1440px; margin: 0 auto; min-height: 0;
@@ -345,6 +357,14 @@ body {
   margin-top: 8px; color: #16a34a; font-size: 11px; font-weight: 700;
   letter-spacing: .3px; text-transform: uppercase;
 }
+/* Authentication Patterns — "where this pattern is used". One neutral colour for all
+   types, so no pattern reads as good or bad; the risk lives in the description. */
+.flow-usage { margin-top: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.flow-usage-tag {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe;
+}
+.flow-usage-examples { font-size: 11.5px; color: var(--muted); line-height: 1.4; text-align: left; }
 .flow-go {
   flex: 0 0 auto; color: var(--accent); font-weight: 700; font-size: 12px;
   transition: transform .14s ease;
@@ -439,4 +459,53 @@ body {
 @media (max-width: 880px) {
   .workspace { grid-template-columns: 1fr; }
   .chat-pane { border-right: none; border-bottom: 1px solid var(--line); max-height: 45vh; }
+}
+
+/* Force login (prompt=login) toggle bar at the top of each flow */
+.login-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 18px; border-bottom: 1px solid var(--line); background: #fafbfc;
+}
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12.5px; color: var(--ink); user-select: none; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track {
+  position: relative; width: 32px; height: 18px; border-radius: 999px; background: #d1d5db;
+  transition: background .15s ease; flex: 0 0 auto;
+}
+.switch-thumb {
+  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s ease;
+}
+.switch input:checked + .switch-track { background: var(--green); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(14px); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch-label code { font-size: 11.5px; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+.btn-small { padding: 4px 10px; font-size: 12px; }
+
+/* Step note — where/whether client authentication happens on this call */
+.step-note {
+  margin: 0 0 10px; padding: 8px 10px; border-radius: 6px; font-size: 12.5px; line-height: 1.45;
+  background: #eff6ff; border: 1px solid #dbeafe; color: #1e3a8a;
+}
+
+/* Decoded / Raw view switch on each step card */
+.view-toggle { display: inline-flex; gap: 2px; margin-left: auto; padding: 2px; border-radius: 6px; background: var(--chip); }
+.view-toggle button {
+  background: none; border: none; padding: 3px 9px; border-radius: 4px; cursor: pointer;
+  font-size: 11.5px; font-weight: 600; color: var(--muted);
+}
+.view-toggle button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+.tabs-row { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+.tabs-row .tabs { border-bottom: none; margin-bottom: 0; }
+.query-params { margin-top: 8px; }
+.btn-outline {
+  background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font-weight: 600;
+}
+.btn-outline:hover:not(:disabled) { border-color: var(--green); color: var(--green-deep); }
+.btn-outline:disabled { opacity: .5; cursor: default; }
+
+/* Shown on the login page after a flow's subject token expired */
+.login-notice {
+  margin: 0 0 16px; padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.45;
+  background: #fffbeb; border: 1px solid #fde68a; color: #92400e; text-align: left;
 }

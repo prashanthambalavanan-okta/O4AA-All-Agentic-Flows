@@ -136,6 +136,19 @@ validates the required vars and prints exactly which is missing.
 
 See `.env.example` for the full, commented list.
 
+## Authentication Patterns (`.env.auth-patterns`)
+
+The Home page has two tabs: **Agentic Patterns** (all the flows above) and **Authentication Patterns**. The second tab demos four ways an agent can authenticate to Okta. Each runs the same HI - Cross-App Access (Login as agent) chain: T0 `/authorize` → T1 `/token` → T2 id-JAG → T3 resource token → T4 MCP. The agent's own client authentication is used at T1, T2 and T3.
+
+| Card | Agent env vars | `token_endpoint_auth_method` |
+|---|---|---|
+| Public / Private Key | `PKJWT_AGENT_*` | `private_key_jwt` |
+| Client ID / Client Secret | `SECRET_AGENT_*` | `client_secret_basic` (or `_post`) |
+| Client ID Only | `PUBLIC_AGENT_*` | `none` (PKCE) |
+| CIMD | `CIMD_AGENT_*` | `private_key_jwt` via `jwks_uri` (or `none`) |
+
+Copy `.env.auth-patterns.example` to `.env.auth-patterns` and set one client ID per agent. On each Okta app, register the redirect URI `<APP_BASE_URL>/api/authp/<pkjwt|secret|public|cimd>/callback`. For CIMD, the client ID is the URL of the metadata document this app serves at `/api/authp/cimd/client-metadata.json`, and its keys are served at `/api/authp/cimd/jwks.json`. Okta has to be able to fetch that URL, so use the public HTTPS deployment, not localhost.
+
 ## Run
 
 ```sh

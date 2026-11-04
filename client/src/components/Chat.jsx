@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { ask, revokeSts, login } from '../api.js';
 import SequencePane from './SequencePane.jsx';
 import SchedulerPanel from './SchedulerPanel.jsx';
+import { isForceLogin, setForceLogin, supportsForceLogin, startFlowLogin } from '../forceLogin.js';
 
-export default function Chat({ loginStep, flow }) {
+export default function Chat({ loginStep, flow, onSessionExpired }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -27,6 +28,13 @@ export default function Chat({ loginStep, flow }) {
   const [mode, setMode] = useState(flow.scheduler ? 'scheduler' : 'chat');
 
   const suggestions = flow.suggestions || [];
+  // Force login (prompt=login) toggle — persisted per flow; applied the next time the
+  // flow is opened from Home, or immediately via "Log in again".
+  const [forceLogin, setForceLoginState] = useState(() => isForceLogin(flow.id));
+  function toggleForceLogin() {
+    setForceLogin(flow.id, !forceLogin);
+    setForceLoginState(!forceLogin);
+  }
 
   async function submit(text) {
     const question = (text ?? input).trim();
@@ -42,6 +50,11 @@ export default function Chat({ loginStep, flow }) {
       setSteps([...baseSteps, ...(res.steps || [])]);
       if (res.interaction?.uri) setInteraction(res.interaction);
     } catch (err) {
+      // Subject token expired (or the session is gone): sign out and return to login.
+      if ((err.code === 'token_expired' || err.code === 'not_authenticated') && onSessionExpired) {
+        onSessionExpired(err.code === 'token_expired' ? err.message : 'Your session ended. Sign in again.');
+        return;
+      }
       setMessages((m) => [...m, { role: 'assistant', text: `Something went wrong: ${err.message}` }]);
     } finally {
       setBusy(false);
@@ -66,6 +79,25 @@ export default function Chat({ loginStep, flow }) {
   return (
     <div className="workspace">
       <section className="chat-pane">
+        {supportsForceLogin(flow) && (
+          <div className="login-bar">
+            <label className="switch" title="Adds prompt=login to /authorize so Okta re-authenticates even with an existing session">
+              <input type="checkbox" checked={forceLogin} onChange={toggleForceLogin} />
+              <span className="switch-track"><span className="switch-thumb" /></span>
+              <span className="switch-label">
+                Force login <code>prompt=login</code>
+              </span>
+            </label>
+            <button
+              className="btn-outline btn-small"
+              disabled={busy}
+              onClick={() => startFlowLogin(flow, { force: forceLogin })}
+              title={forceLogin ? 'Re-run /authorize with prompt=login' : 'Re-run /authorize (Okta may reuse its session)'}
+            >
+              Log in again ↻
+            </button>
+          </div>
+        )}
         {flow.scheduler && (
           <div className="mode-tabs">
             <button className={`mode-tab ${mode === 'chat' ? 'active' : ''}`} onClick={() => setMode('chat')}>
