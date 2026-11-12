@@ -21,10 +21,12 @@ export async function ask(question, flow = 'xaa') {
   return res.json();
 }
 
-export async function revokeSts() {
+export async function revokeSts(flow) {
   const res = await fetch('/api/sts/revoke', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
+    body: JSON.stringify({ flow }),
   });
   return res.json();
 }

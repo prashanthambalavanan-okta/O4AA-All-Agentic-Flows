@@ -6,7 +6,7 @@ const SECTIONS = [
     eyebrow: 'Single Agent',
     title: 'Human Identity Use Case',
     blurb: 'One agent acting on behalf of a signed-in human to reach a protected resource.',
-    flows: ['xaa', 'xaa-webapp', 'hi-saml', 'secrets', 'service-account', 'sts-github'],
+    flows: ['xaa', 'xaa-webapp', 'hi-saml', 'secrets', 'service-account', 'sts-github', 'sts-atlassian'],
   },
   {
     eyebrow: 'Single Agent',
@@ -42,7 +42,7 @@ const TABS = [
 const TAB_KEY = 'o4aa.homeTab';
 
 // Party of the agent and of the resource it reaches: first-party (same org as
-// the IdP) or third-party (an external provider, e.g. GitHub behind the STS
+// the IdP) or third-party (an external provider, e.g. GitHub / Atlassian behind the STS
 // broker). Flows default to 1P/1P; a flow overrides via agentParty/resourceParty.
 const PARTY_LABEL = { '1P': 'First party', '3P': 'Third party' };
 

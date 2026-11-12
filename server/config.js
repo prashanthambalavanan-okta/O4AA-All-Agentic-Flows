@@ -365,6 +365,32 @@ export const config = {
     body: process.env.GITHUB_PR_BODY || 'Opened by the AI agent using an Okta STS-brokered GitHub token.',
   },
 
+  // STS broker flow (Atlassian) — same T2 token exchange as GitHub (config.sts token
+  // URL / audience), but resource = the Okta Atlassian Resource Connection. The brokered
+  // token carries Rovo "agent-interface" scopes, so T3+ call Atlassian's remote MCP
+  // server (Jira tools) rather than the Jira REST API.
+  stsAtlassian: {
+    resource: process.env.ATLASSIAN_STS_RESOURCE,
+    // Optional 'scope' on the STS token-exchange (omitted if blank). The brokered
+    // token's actual scopes are governed by the Okta Atlassian Resource Connection.
+    scopes: process.env.ATLASSIAN_STS_SCOPES || undefined,
+    // Okta Workflows flow that clears the user's stored Atlassian connection. Falls back
+    // to the GitHub revoke flow URL when not set.
+    revokeWorkflowUrl: process.env.ATLASSIAN_STS_REVOKE_WORKFLOW_URL || undefined,
+    mcpUrl: process.env.ATLASSIAN_MCP_URL || 'https://mcp.atlassian.com/v2/mcp',
+    // Site UUID, site URL, or bare site name ("acme"). Blank = first site the token can
+    // reach (via the MCP getAccessibleAtlassianResources tool).
+    cloudId: process.env.ATLASSIAN_STS_CLOUD_ID || process.env.ATLASSIAN_CLOUD_ID,
+    // Optional — blank = the first project the brokered token can see.
+    projectKey: process.env.ATLASSIAN_STS_PROJECT_KEY,
+    issueType: process.env.ATLASSIAN_STS_ISSUE_TYPE || 'Task',
+    summary: process.env.ATLASSIAN_STS_ISSUE_SUMMARY || 'Automated ticket via Okta AI Agent',
+    description:
+      process.env.ATLASSIAN_STS_ISSUE_DESCRIPTION ||
+      'Created by the AI agent using an Okta STS-brokered Atlassian token.',
+    maxResults: Number(process.env.ATLASSIAN_STS_MAX_RESULTS) || 10,
+  },
+
   // Secrets flow (T2) — vaulted-secret token exchange at the org token endpoint.
   secrets: {
     tokenUrl: ORG_TOKEN_URL,

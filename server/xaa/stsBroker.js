@@ -10,7 +10,7 @@ const CLIENT_ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-b
 
 /**
  * T2 — STS broker token exchange. Exchanges the user's id_token for a brokered
- * resource (GitHub) access token at the org token endpoint. If Okta has no stored
+ * resource (GitHub, or Atlassian via `ov.resource`) access token at the org token endpoint. If Okta has no stored
  * tokens yet it returns HTTP 400 interaction_required + an interaction_uri; after
  * the user consents, the agent retries the identical request and gets HTTP 200.
  *
@@ -119,10 +119,10 @@ function resolveUid(accessToken, idToken) {
 
 // The invoke URL carries a clientToken query param — mask it before the captured step
 // (and its curl snippet) is shipped to the browser.
-function redactClientToken(captured) {
+function redactClientToken(captured, workflowUrl) {
   let secret;
   try {
-    secret = new URL(config.sts.revokeWorkflowUrl).searchParams.get('clientToken');
+    secret = new URL(workflowUrl).searchParams.get('clientToken');
   } catch {
     return;
   }
@@ -133,13 +133,20 @@ function redactClientToken(captured) {
 }
 
 /**
- * Revoke the user's brokered GitHub connection by invoking an Okta Workflows flow with
- * { id: <uid> }, so the next token exchange returns interaction_required and re-prompts
- * for consent. (An RFC 7009 token revoke leaves the stored connection in place.)
+ * Revoke the user's brokered connection (GitHub by default) by invoking an Okta Workflows
+ * flow with { id: <uid> }, so the next token exchange returns interaction_required and
+ * re-prompts for consent. (An RFC 7009 token revoke leaves the stored connection in place.)
+ * `workflowUrl` / `label` let other STS connections (e.g. Atlassian) reuse this.
  */
-export async function revokeStsToken({ accessToken, idToken } = {}) {
-  if (!config.sts.revokeWorkflowUrl) {
-    return { ok: false, error: 'Revoke is not configured — set STS_REVOKE_WORKFLOW_URL.' };
+export async function revokeStsToken({
+  accessToken,
+  idToken,
+  workflowUrl = config.sts.revokeWorkflowUrl,
+  label = 'GitHub',
+  envVar = 'STS_REVOKE_WORKFLOW_URL',
+} = {}) {
+  if (!workflowUrl) {
+    return { ok: false, error: `Revoke is not configured — set ${envVar}.` };
   }
 
   const uid = resolveUid(accessToken, idToken);
@@ -153,16 +160,16 @@ export async function revokeStsToken({ accessToken, idToken } = {}) {
   const { captured, ok } = await captureJsonPost(
     {
       id: 'R1',
-      title: 'Revoke GitHub Connection',
+      title: `Revoke ${label} Connection`,
       badge: 'Revoke',
       from: 'Agent',
       to: 'Okta Workflows',
     },
-    config.sts.revokeWorkflowUrl,
+    workflowUrl,
     {},
     { id: uid }
   );
 
-  redactClientToken(captured);
+  redactClientToken(captured, workflowUrl);
   return { step: captured, ok };
 }

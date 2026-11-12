@@ -175,6 +175,26 @@ export const FLOWS = {
       { label: 'Read pull requests', text: 'Read pull requests' },
       { label: 'Create a pull request', text: 'Create a pull request' },
     ],
+    stsRevoke: true,
+    greeting: 'Click “Read pull requests” or “Create a pull request” to start.',
+    placeholder: 'Ask the agent to read pull requests…',
+  },
+  'sts-atlassian': {
+    id: 'sts-atlassian',
+    name: 'HI - STS Broker (Atlassian)',
+    tagline: 'Agent → STS Brokered Consent → Resource Token → Atlassian MCP (Jira)',
+    description:
+      'Exchange the user’s ID token for an Atlassian access token brokered by Okta. If consent is needed, Okta returns interaction_required — authorize, then retry — and the agent calls Atlassian’s MCP server with the brokered token to read and create Jira tickets.',
+    accent: '#0052cc',
+    // Atlassian is an external provider, so the resource the agent reaches is third-party.
+    resourceParty: '3P',
+    suggestions: [
+      { label: 'Read Jira tickets', text: 'Read Jira tickets' },
+      { label: 'Create a Jira ticket', text: 'Create a new Jira ticket' },
+    ],
+    stsRevoke: true,
+    greeting: 'Click “Read Jira tickets” or “Create a Jira ticket” to start.',
+    placeholder: 'Ask the agent to read or create Jira tickets…',
   },
 };
 

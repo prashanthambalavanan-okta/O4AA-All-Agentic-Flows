@@ -20,6 +20,7 @@ export const FLOW_AUTH_CONTEXT = {
   'hi-a2a': 'a2a',
   'nhi-a2a': 'a2a-or-default',
   'sts-github': 'default',
+  'sts-atlassian': 'default',
   // Authentication Patterns — each agent has its own login context (session.authp[pattern]).
   'authp-pkjwt': 'authp',
   'authp-secret': 'authp',
@@ -71,7 +72,7 @@ function subjectTokenFor(flow, session) {
     case 'secrets-atlassian':
     case 'secrets-atlassian-token':
       return null;
-    default: // xaa, secrets, service-account, sts-github
+    default: // xaa, secrets, service-account, sts-github, sts-atlassian
       return { kind: 'jwt', value: session.idToken };
   }
 }

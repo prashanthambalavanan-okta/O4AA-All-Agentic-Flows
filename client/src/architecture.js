@@ -684,6 +684,77 @@ export const ARCHITECTURE = {
     GH-->>A: Pull request data
     A-->>U: Pull request shown in the agent UI`,
   },
+
+  'sts-atlassian': {
+    summary:
+      'The same STS broker shape as the GitHub flow, pointed at an Okta Atlassian Resource Connection. The user signs into the agent, so the agent holds the user’s ID token, and Okta’s Security Token Service brokers an Atlassian (3LO) access token for that user — no id-JAG, no resource authorization server. The first time (or after a revoke), Okta has no stored consent and returns interaction_required with a URI; the user authorizes the Atlassian connection in the browser and the agent retries the identical exchange. The brokered token carries Atlassian’s Rovo “agent-interface” scopes, so the agent presents it to Atlassian’s remote MCP server and calls Jira tools there — searchJiraIssuesUsingJql to read the project’s tickets, createJiraIssue to create one.',
+    steps: [
+      {
+        id: 'T0',
+        title: 'Authorization Request',
+        from: 'User (browser)',
+        to: 'Okta (IdP)',
+        description: 'The agent redirects the browser to /authorize with response_type=code, PKCE (S256), state and nonce — identical to the plain Cross-App Access flow’s T0.',
+      },
+      {
+        id: 'T1',
+        title: 'User Login',
+        from: 'Agent',
+        to: 'Okta (IdP)',
+        description: 'The agent POSTs the T0 code to /token with a private_key_jwt assertion. The id_token is stored in the agent’s session — identical to the plain Cross-App Access flow’s T1.',
+      },
+      {
+        id: 'T2',
+        title: 'Resource Token Exchange (STS)',
+        from: 'Agent',
+        to: 'Okta Org Server',
+        description: 'subject_token = id_token, requested_token_type = oauth-sts, resource = the Atlassian connection. Returns HTTP 400 interaction_required + an interaction_uri the first time; the user consents in the browser and the agent retries the same request.',
+      },
+      {
+        id: 'T3',
+        title: 'Atlassian MCP · initialize',
+        from: 'Agent',
+        to: 'Atlassian MCP',
+        description: 'JSON-RPC initialize to mcp.atlassian.com with the brokered token as the Bearer — opens an MCP session (Mcp-Session-Id). If no site is configured, the agent then lists the token’s sites from api.atlassian.com/oauth/token/accessible-resources; with no project key, Read searches all projects and Create uses the project of the newest ticket.',
+      },
+      {
+        id: 'T4',
+        title: 'MCP Tool Call · Read / Create Jira Ticket',
+        from: 'Agent',
+        to: 'Atlassian MCP',
+        description: 'tools/call searchJiraIssuesUsingJql (read, search:jira:agent-interface + read:jira:agent-interface) or createJiraIssue (write:jira:agent-interface) — the write genuinely exercises the token’s scopes.',
+      },
+    ],
+    diagram: `sequenceDiagram
+    participant U as User (browser)
+    participant A as Agent (OIDC client)
+    participant IdP as Okta (IdP / Org Server)
+    participant M as Atlassian MCP (mcp.atlassian.com)
+
+    U->>A: Open the agent app, start the flow
+    A-->>U: Redirect to Okta /authorize (code + PKCE)
+    U->>IdP: T0 GET /authorize, then authenticate
+    IdP-->>U: T0 302 to agent /callback with code
+    U->>A: GET /callback with code
+    A->>IdP: T1 POST /token (code + verifier + private_key_jwt)
+    IdP-->>A: id_token (held in the agent session)
+    A->>IdP: T2 Resource Token Exchange (subject: id_token)
+    alt consent already granted
+        IdP-->>A: brokered Atlassian access_token
+    else first time or after revoke
+        IdP-->>A: 400 interaction_required + interaction_uri
+        A-->>U: Show the interaction_uri as a consent link
+        U->>IdP: Authorize the Atlassian connection
+        U->>A: Return to the agent and retry
+        A->>IdP: T2 (retry) Resource Token Exchange
+        IdP-->>A: brokered Atlassian access_token
+    end
+    A->>M: T3 MCP initialize (Bearer access_token)
+    M-->>A: MCP session
+    A->>M: T4 tools/call searchJiraIssuesUsingJql or createJiraIssue
+    M-->>A: Jira issue data
+    A-->>U: Tickets shown in the agent UI`,
+  },
 };
 
 // ── Authentication Patterns ──

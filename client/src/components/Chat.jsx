@@ -8,11 +8,7 @@ export default function Chat({ loginStep, flow, onSessionExpired }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      text: `Hi! ${
-        flow.id === 'sts-github'
-          ? 'Click “Read pull requests” or “Create a pull request” to start.'
-          : 'Ask me about inventory or recent shipments.'
-      } I’ll run it through the ${flow.name} flow.`,
+      text: `Hi! ${flow.greeting || 'Ask me about inventory or recent shipments.'} I’ll run it through the ${flow.name} flow.`,
     },
   ]);
   const [input, setInput] = useState('');
@@ -66,7 +62,7 @@ export default function Chat({ loginStep, flow, onSessionExpired }) {
     setInteraction(null);
     setBusy(true);
     try {
-      const res = await revokeSts();
+      const res = await revokeSts(flow.id);
       setMessages((m) => [...m, { role: 'assistant', text: res.answer }]);
       if (res.steps?.length) setSteps((prev) => [...prev, ...res.steps]);
     } catch (err) {
@@ -162,9 +158,7 @@ export default function Chat({ loginStep, flow, onSessionExpired }) {
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={
-                  flow.id === 'sts-github' ? 'Ask the agent to read pull requests…' : 'Ask about inventory or shipments…'
-                }
+                placeholder={flow.placeholder || 'Ask about inventory or shipments…'}
                 disabled={busy}
               />
               <button className="btn-primary" type="submit" disabled={busy}>
@@ -172,7 +166,7 @@ export default function Chat({ loginStep, flow, onSessionExpired }) {
               </button>
             </form>
 
-            {flow.id === 'sts-github' && (
+            {flow.stsRevoke && (
               <div className="revoke-bar">
                 <button className="btn-revoke" disabled={busy} onClick={revoke}>
                   Revoke STS token (re-trigger consent)

@@ -4,9 +4,9 @@ import { config } from '../config.js';
 // T4 reads the Scrum board's issues. These are hand-built steps (not captureFormPost /
 // captureGet) so the client secret and bearer token are masked in the UI.
 
-const mask = (v = '') => (v.length > 16 ? `${v.slice(0, 8)}…${v.slice(-4)}` : '••••');
+export const mask = (v = '') => (v.length > 16 ? `${v.slice(0, 8)}…${v.slice(-4)}` : '••••');
 
-async function doFetch(url, init) {
+export async function doFetch(url, init) {
   try {
     const res = await fetch(url, init);
     const text = await res.text();
@@ -25,6 +25,19 @@ function pickClient(raw) {
   const clientId = raw.client_id ?? raw.clientId ?? raw.username ?? vals[0];
   const clientSecret = raw.client_secret ?? raw.clientSecret ?? raw.password ?? vals[1];
   return clientId && clientSecret ? { clientId: String(clientId), clientSecret: String(clientSecret) } : null;
+}
+
+// ATLASSIAN_CLOUD_ID must be the site's UUID. If it's blank, or looks like the site
+// name (e.g. "acme" / "acme.atlassian.net" — easy to paste from the URL), resolve the
+// UUID from the token's accessible-resources.
+export async function resolveCloudId(apiBaseUrl, cloudId, headers) {
+  const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v || '');
+  if (isUuid(cloudId)) return cloudId;
+  const site = (cloudId || '').replace(/^https?:\/\//, '').replace(/\.atlassian\.net.*$/, '');
+  const r = await doFetch(`${apiBaseUrl}/oauth/token/accessible-resources`, { headers });
+  const sites = Array.isArray(r.body) ? r.body : [];
+  const match = site ? sites.find((x) => x.url?.includes(`//${site}.atlassian.net`) || x.name === site) : null;
+  return (match || (site ? null : sites[0]))?.id;
 }
 
 /** T3 — client_credentials at Atlassian using the vaulted client id/secret. */
@@ -68,17 +81,7 @@ export async function readScrumBoardIssues(accessToken, stepId = 'T4') {
 
   if (!boardId) return { ok: false, error: 'Atlassian flow is not configured — set ATLASSIAN_BOARD_ID.', step: notConfigured('ATLASSIAN_BOARD_ID', stepId) };
 
-  // ATLASSIAN_CLOUD_ID must be the site's UUID. If it's blank, or looks like the site
-  // name (e.g. "acme" / "acme.atlassian.net" — easy to paste from the URL), resolve the
-  // UUID from the token's accessible-resources.
-  const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v || '');
-  if (!isUuid(cloudId)) {
-    const site = (cloudId || '').replace(/^https?:\/\//, '').replace(/\.atlassian\.net.*$/, '');
-    const r = await doFetch(`${apiBaseUrl}/oauth/token/accessible-resources`, { headers });
-    const sites = Array.isArray(r.body) ? r.body : [];
-    const match = site ? sites.find((x) => x.url?.includes(`//${site}.atlassian.net`) || x.name === site) : null;
-    cloudId = (match || (site ? null : sites[0]))?.id;
-  }
+  cloudId = await resolveCloudId(apiBaseUrl, cloudId, headers);
   if (!cloudId) return { ok: false, error: 'Could not find the Jira site for this token — the Atlassian credential may not have access to the site, or ATLASSIAN_CLOUD_ID is wrong.', step: notConfigured('ATLASSIAN_CLOUD_ID', stepId) };
 
   const url = `${apiBaseUrl}/ex/jira/${cloudId}/rest/agile/1.0/board/${boardId}/issue?maxResults=${maxResults}&fields=summary,status,assignee`;

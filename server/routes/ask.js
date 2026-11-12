@@ -10,6 +10,7 @@ import { requestVaultedSecret, requestServiceAccount, requestAtlassianSecret, re
 import { requestServiceToken, requestServiceIdJag, exchangeServiceIdJag } from '../xaa/serviceFlow.js';
 import { exchangeSamlForRefreshToken, exchangeRefreshForIdJag } from '../xaa/samlFlow.js';
 import { requestResourceToken, readPullRequests, openPullRequest, revokeStsToken } from '../xaa/stsBroker.js';
+import { readJiraIssues, createJiraIssue, summarizeJiraIssues } from '../xaa/stsAtlassian.js';
 import {
   requestIdJagForInventory,
   exchangeForInventoryToken,
@@ -298,6 +299,57 @@ async function runStsGithubFlow(idToken, steps, action) {
   };
 }
 
+// STS broker (Atlassian): same T2 exchange as GitHub with the Atlassian resource → Atlassian
+// MCP server → read / create Jira issue.
+async function runStsAtlassianFlow(idToken, steps, action) {
+  if (!config.stsAtlassian.resource) {
+    return { answer: 'STS Atlassian flow is not configured — set ATLASSIAN_STS_RESOURCE.' };
+  }
+
+  const t2 = await requestResourceToken(idToken, {
+    resource: config.stsAtlassian.resource,
+    scope: config.stsAtlassian.scopes,
+  });
+  steps.push(t2.step);
+  if (!t2.ok) {
+    if (t2.interactionUri) {
+      return {
+        answer: 'Consent required: authorize the Atlassian connection, then click Retry to re-run the request.',
+        interaction: { uri: t2.interactionUri },
+      };
+    }
+    return { answer: 'The resource token request failed — see step T2 for the error response.' };
+  }
+
+  const stsAccessToken = t2.accessToken;
+
+  if (action === 'create') {
+    const r = await createJiraIssue(stsAccessToken, steps);
+    if (!r.ok) {
+      return {
+        answer: `${r.error} — see the Atlassian MCP steps. A write call like this is what actually exercises the brokered token's scopes.`,
+        stsAccessToken,
+      };
+    }
+    const { issue } = r;
+    const summary = [
+      `Jira ticket created${issue.key ? `: ${issue.key}` : ''}`,
+      '',
+      `• Project: ${issue.projectKey}`,
+      `• Type: ${issue.issueType}`,
+      `• Summary: ${issue.summary}`,
+      `• Description: ${issue.description}`,
+      issue.browseUrl ? `• Link: ${issue.browseUrl}` : null,
+    ].filter((l) => l !== null);
+    if (!issue.key) summary.push('', 'The ticket key was not in the response — see the last MCP step.');
+    return { answer: summary.join('\n'), stsAccessToken };
+  }
+
+  const r = await readJiraIssues(stsAccessToken, steps);
+  if (!r.ok) return { answer: `${r.error} — see the Atlassian MCP steps.`, stsAccessToken };
+  return { answer: summarizeJiraIssues(r.issues, r.projectKey, r.raw), stsAccessToken };
+}
+
 router.post('/ask', async (req, res) => {
   const { question, flow = 'xaa' } = req.body;
 
@@ -331,6 +383,12 @@ router.post('/ask', async (req, res) => {
       answer = r.answer;
       interaction = r.interaction;
       if (r.stsAccessToken) req.session.stsAccessToken = r.stsAccessToken;
+    } else if (flow === 'sts-atlassian') {
+      const action = /\b(create|open|new|raise|file)\b/i.test(question || '') ? 'create' : 'read';
+      const r = await runStsAtlassianFlow(req.session.idToken, steps, action);
+      answer = r.answer;
+      interaction = r.interaction;
+      if (r.stsAccessToken) req.session.stsAtlassianAccessToken = r.stsAccessToken;
     } else if (flow === 'hi-saml') {
       answer = await runSamlFlow(req.session.samlAssertion, toolName, steps);
     } else if (flow === 'hi-a2a') {
@@ -358,24 +416,40 @@ router.post('/ask', async (req, res) => {
   }
 });
 
-// Revoke the user's stored GitHub connection (via an Okta Workflows flow keyed on the
-// access token's `uid`) so the next exchange returns interaction_required.
+// Revoke the user's stored GitHub (or, with { flow: 'sts-atlassian' }, Atlassian) connection
+// via an Okta Workflows flow keyed on the access token's `uid`, so the next exchange
+// returns interaction_required.
 router.post('/sts/revoke', async (req, res) => {
   if (!req.session.user) {
     return res.status(401).json({ error: 'not_authenticated' });
   }
+  const isAtlassian = req.body?.flow === 'sts-atlassian';
+  const target = isAtlassian
+    ? {
+        workflowUrl: config.stsAtlassian.revokeWorkflowUrl || config.sts.revokeWorkflowUrl,
+        label: 'Atlassian',
+        envVar: 'ATLASSIAN_STS_REVOKE_WORKFLOW_URL',
+        retry: 'Read Jira tickets',
+      }
+    : { workflowUrl: config.sts.revokeWorkflowUrl, label: 'GitHub', envVar: 'STS_REVOKE_WORKFLOW_URL', retry: 'Read pull requests' };
   try {
     const r = await revokeStsToken({
       accessToken: req.session.accessToken,
       idToken: req.session.idToken,
+      workflowUrl: target.workflowUrl,
+      label: target.label,
+      envVar: target.envVar,
     });
     if (r.error) {
       return res.json({ answer: r.error, steps: [] });
     }
-    if (r.ok) req.session.stsAccessToken = undefined;
+    if (r.ok) {
+      if (isAtlassian) req.session.stsAtlassianAccessToken = undefined;
+      else req.session.stsAccessToken = undefined;
+    }
     res.json({
       answer: r.ok
-        ? 'Revoke flow invoked — the stored GitHub connection was cleared. Run “Read pull requests” again; the next exchange should return interaction_required and re-prompt for consent.'
+        ? `Revoke flow invoked — the stored ${target.label} connection was cleared. Run “${target.retry}” again; the next exchange should return interaction_required and re-prompt for consent.`
         : 'The revoke flow returned an error — see step R1 for the response.',
       steps: [r.step],
     });

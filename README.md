@@ -20,6 +20,7 @@ The home page offers five flows. All run against **real Okta** (no mock mode).
 | **Service Accounts** | T1 login → T2 **service account** → T3 **MCP (Basic)** | Exchange for a service-account username/password, then call the MCP with HTTP Basic auth. |
 | **NHI - Okta Protected Resource** | T1 **client_credentials** → T2 **id-JAG** → T3 **access token** → T4 **MCP** | A non-human/service identity: a headless app authenticates with `private_key_jwt` (client credentials), then runs the XAA chain — no user involved. |
 | **STS Broker (GitHub)** | T1 login → T2 **brokered token** (consent loop) → T3 **read / create PR** | Exchange for an Okta-brokered GitHub token. If consent is needed Okta returns `interaction_required` → authorize → retry. Then read or create a pull request. Includes a **Revoke** action to re-trigger consent. |
+| **STS Broker (Atlassian)** | T1 login → T2 **brokered token** (consent loop) → T3 **read / create Jira ticket** | Same STS exchange against an Okta Atlassian Resource Connection, then call Atlassian's remote MCP server with the brokered token to read the project's Jira tickets or create a new one. Includes a **Revoke** action. |
 
 ### Auth at a glance
 
@@ -116,6 +117,8 @@ If you'd rather give a login app its own key, set `OKTA_PRIVATE_KEY_FILE` / `OKT
 - **Secrets / Service Accounts** — configured Resource Connections; `*_RESOURCE` ORNs.
 - **STS Broker** — a GitHub Resource Connection; the backing GitHub App needs **Pull requests:
   read** (read) or **read & write** (create).
+- **STS Broker (Atlassian)** — an Atlassian Resource Connection (Rovo MCP) with `read:jira:agent-interface`,
+  `search:jira:agent-interface` (read) and `write:jira:agent-interface` (create), plus `offline_access`.
 
 ## Configuration (`.env`)
 
@@ -133,6 +136,7 @@ validates the required vars and prints exactly which is missing.
 | Secrets / Service Accounts | `SECRETS_RESOURCE`, `SERVICE_ACCOUNT_RESOURCE`, `MCP_BASIC_USERNAME`, `MCP_BASIC_PASSWORD` (`OKTA_ORG_URL` optional) |
 | NHI / Service App | `SERVICE_CLIENT_ID`, `SERVICE_PRIVATE_KEY_FILE`, `SERVICE_KID`, `SERVICE_SCOPES`, `SERVICE_IDJAG_SCOPES`, `SERVICE_ISSUER`, `SERVICE_AUDIENCE`, `SERVICE_RESOURCE` |
 | STS Broker (GitHub) | `GITHUB_RESOURCE`, `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_PR_BASE`, `GITHUB_PR_HEAD`, `GITHUB_PR_TITLE` |
+| STS Broker (Atlassian) | `ATLASSIAN_STS_RESOURCE`; optional `ATLASSIAN_MCP_URL` (default `https://mcp.atlassian.com/v2/mcp`), `ATLASSIAN_STS_PROJECT_KEY` (default: Read searches all projects, Create uses the newest ticket's project), `ATLASSIAN_STS_CLOUD_ID` (default: first accessible site), `ATLASSIAN_STS_SCOPES`, `ATLASSIAN_STS_ISSUE_TYPE` (default `Task`), `ATLASSIAN_STS_ISSUE_SUMMARY`, `ATLASSIAN_STS_ISSUE_DESCRIPTION`, `ATLASSIAN_STS_MAX_RESULTS`, `ATLASSIAN_STS_REVOKE_WORKFLOW_URL` |
 
 See `.env.example` for the full, commented list.
 
