@@ -6,7 +6,7 @@ const SECTIONS = [
     eyebrow: 'Single Agent',
     title: 'Human Identity Use Case',
     blurb: 'One agent acting on behalf of a signed-in human to reach a protected resource.',
-    flows: ['xaa', 'xaa-webapp', 'hi-saml', 'secrets', 'service-account', 'sts-github', 'sts-atlassian'],
+    flows: ['xaa', 'xaa-webapp', 'hi-saml', 'xaa-atlassian', 'secrets', 'service-account', 'sts-github', 'sts-atlassian'],
   },
   {
     eyebrow: 'Single Agent',

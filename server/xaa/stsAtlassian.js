@@ -49,14 +49,14 @@ function toolPayload(result) {
 /**
  * A minimal MCP client for one flow run. Every call records a step: T3, T4, … in order.
  */
-class AtlassianMcpSession {
-  constructor(accessToken, steps, firstStep = 3) {
+export class AtlassianMcpSession {
+  constructor(accessToken, steps, firstStep = 3, url = config.stsAtlassian.mcpUrl) {
     this.accessToken = accessToken;
     this.steps = steps;
     this.n = firstStep;
     this.rpcId = 0;
     this.sessionId = null;
-    this.url = config.stsAtlassian.mcpUrl;
+    this.url = url;
   }
 
   headers(shown = false) {
@@ -165,7 +165,7 @@ class AtlassianMcpSession {
 function rpcError(status, body, data) {
   if (body?.error?.message) return body.error.message;
   if (typeof data === 'string') return data;
-  if (status === 401 || status === 403) return `HTTP ${status} — the brokered token was rejected by the Atlassian MCP server.`;
+  if (status === 401 || status === 403) return `HTTP ${status} — the access token was rejected by the Atlassian MCP server.`;
   return `HTTP ${status}`;
 }
 
@@ -175,12 +175,12 @@ function asSites(data) {
   return list.filter((s) => s && (s.id || s.url));
 }
 
-// Pick the site: ATLASSIAN_STS_CLOUD_ID (UUID, site URL, or bare site name), else the
+// Pick the site: <prefix>_CLOUD_ID (UUID, site URL, or bare site name), else the
 // first site the token can reach. The Atlassian MCP tools accept a UUID or a site URL.
 // Discovery uses the standard accessible-resources endpoint (works for any Atlassian
 // OAuth token, no extra scope) rather than an MCP tool that may need other scopes.
-async function resolveSite(mcp) {
-  const configured = (config.stsAtlassian.cloudId || '').trim();
+async function resolveSite(mcp, o) {
+  const configured = (o.cloudId || '').trim();
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(configured);
   if (configured && isUuid) return { cloudId: configured, siteUrl: null };
   if (configured) {
@@ -192,8 +192,10 @@ async function resolveSite(mcp) {
   const sites = r.ok ? asSites(r.body) : [];
   // Prefer a site the token holds Jira scopes for.
   const site = sites.find((x) => (x.scopes || []).some((sc) => sc.includes('jira'))) || sites[0];
+  // Nothing discoverable — fall back to a flow-supplied guess (e.g. the id-JAG's aud_tenant).
+  if (!site && o.fallbackCloudId) return { cloudId: o.fallbackCloudId, siteUrl: null };
   if (!site) {
-    return { error: 'The brokered token cannot reach any Atlassian site — set ATLASSIAN_STS_CLOUD_ID.' };
+    return { error: `The access token cannot reach any Atlassian site — set ${o.envPrefix}_CLOUD_ID.` };
   }
   return { cloudId: site.id || site.url, siteUrl: site.url || null };
 }
@@ -234,10 +236,10 @@ export function issueList(data, depth = 0) {
 const field = (i, name) => i?.fields?.[name] ?? i?.[name];
 const label = (v) => (v && typeof v === 'object' ? v.displayName ?? v.name ?? v.value ?? '' : v ?? '');
 
-// For create with no ATLASSIAN_STS_PROJECT_KEY: the project of the most recent ticket
+// For create with no <prefix>_PROJECT_KEY: the project of the most recent ticket
 // (search scope only); getVisibleJiraProjects is only a last resort.
-async function resolveProject(mcp, cloudId) {
-  if (config.stsAtlassian.projectKey) return { projectKey: config.stsAtlassian.projectKey };
+async function resolveProject(mcp, cloudId, o) {
+  if (o.projectKey) return { projectKey: o.projectKey };
 
   const s = await mcp.callTool('searchJiraIssuesUsingJql', { cloudId, jql: ALL_RECENT_JQL, fields: ['project'], maxResults: 1 });
   const first = s.ok ? issueList(s.data)[0] : null;
@@ -248,32 +250,46 @@ async function resolveProject(mcp, cloudId) {
   const list = Array.isArray(r.data) ? r.data : r.data?.values || r.data?.projects || [];
   projectKey = list[0]?.key;
   if (!projectKey) {
-    return { error: s.ok || r.ok ? 'No Jira project is visible to the brokered token — set ATLASSIAN_STS_PROJECT_KEY.' : `${r.error || s.error} — set ATLASSIAN_STS_PROJECT_KEY` };
+    return { error: s.ok || r.ok ? `No Jira project is visible to the access token — set ${o.envPrefix}_PROJECT_KEY.` : `${r.error || s.error} — set ${o.envPrefix}_PROJECT_KEY` };
   }
   return { projectKey };
 }
 
-async function openSession(accessToken, steps) {
-  const mcp = new AtlassianMcpSession(accessToken, steps);
+// Per-flow Jira/MCP settings. Defaults to the STS Broker (Atlassian) flow's config, so
+// that flow passes nothing; other flows (HI - Cross-App Access (Atlassian)) override
+// mcpUrl / cloudId / projectKey / firstStep and the env-var prefix used in messages.
+function jiraOptions(opts = {}) {
+  return {
+    ...config.stsAtlassian,
+    firstStep: 3,
+    envPrefix: 'ATLASSIAN_STS',
+    mcpUrlVar: 'ATLASSIAN_MCP_URL',
+    ...opts,
+  };
+}
+
+async function openSession(accessToken, steps, o) {
+  const mcp = new AtlassianMcpSession(accessToken, steps, o.firstStep, o.mcpUrl);
   if (!(await mcp.initialize())) {
-    return { error: 'Could not open an Atlassian MCP session — see step T3 (check ATLASSIAN_MCP_URL and the brokered token).' };
+    return { error: `Could not open an Atlassian MCP session — see step T${o.firstStep} (check ${o.mcpUrlVar} and the access token).` };
   }
-  const site = await resolveSite(mcp);
+  const site = await resolveSite(mcp, o);
   if (site.error) return { error: site.error };
   return { mcp, ...site };
 }
 
 /** Read the most recent Jira tickets (one project, or all projects) via the MCP JQL search tool. */
-export async function readJiraIssues(accessToken, steps) {
-  const s = await openSession(accessToken, steps);
+export async function readJiraIssues(accessToken, steps, opts) {
+  const o = jiraOptions(opts);
+  const s = await openSession(accessToken, steps, o);
   if (s.error) return { ok: false, error: s.error, issues: [] };
 
-  const projectKey = config.stsAtlassian.projectKey;
+  const projectKey = o.projectKey;
   const r = await s.mcp.callTool('searchJiraIssuesUsingJql', {
     cloudId: s.cloudId,
     jql: projectKey ? `project = "${projectKey}" ORDER BY created DESC` : ALL_RECENT_JQL,
     fields: ['summary', 'status', 'assignee'],
-    maxResults: config.stsAtlassian.maxResults,
+    maxResults: o.maxResults,
   });
   if (!r.ok) return { ok: false, error: `Jira search failed: ${r.error}`, issues: [] };
   return { ok: true, projectKey: projectKey || 'all projects', issues: issueList(r.data), raw: r.data };
@@ -307,14 +323,15 @@ function createArgs(schema, v) {
 }
 
 /** Create a Jira ticket via the MCP createJiraIssue tool — a write that exercises the scopes. */
-export async function createJiraIssue(accessToken, steps) {
-  const s = await openSession(accessToken, steps);
+export async function createJiraIssue(accessToken, steps, opts) {
+  const o = jiraOptions(opts);
+  const s = await openSession(accessToken, steps, o);
   if (s.error) return { ok: false, error: s.error, issue: null };
-  const project = await resolveProject(s.mcp, s.cloudId);
+  const project = await resolveProject(s.mcp, s.cloudId, o);
   if (project.error) return { ok: false, error: project.error, issue: null };
   s.projectKey = project.projectKey;
 
-  const { issueType, summary, description } = config.stsAtlassian;
+  const { issueType, summary, description } = o;
   const schema = await s.mcp.toolSchema('createJiraIssue');
   const r = await s.mcp.callTool('createJiraIssue', createArgs(schema, { cloudId: s.cloudId, projectKey: s.projectKey, issueType, summary, description }));
   if (!r.ok) return { ok: false, error: `Jira create failed: ${r.error}`, issue: null };

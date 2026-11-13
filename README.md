@@ -21,6 +21,7 @@ The home page offers five flows. All run against **real Okta** (no mock mode).
 | **NHI - Okta Protected Resource** | T1 **client_credentials** → T2 **id-JAG** → T3 **access token** → T4 **MCP** | A non-human/service identity: a headless app authenticates with `private_key_jwt` (client credentials), then runs the XAA chain — no user involved. |
 | **STS Broker (GitHub)** | T1 login → T2 **brokered token** (consent loop) → T3 **read / create PR** | Exchange for an Okta-brokered GitHub token. If consent is needed Okta returns `interaction_required` → authorize → retry. Then read or create a pull request. Includes a **Revoke** action to re-trigger consent. |
 | **STS Broker (Atlassian)** | T1 login → T2 **brokered token** (consent loop) → T3 **read / create Jira ticket** | Same STS exchange against an Okta Atlassian Resource Connection, then call Atlassian's remote MCP server with the brokered token to read the project's Jira tickets or create a new one. Includes a **Revoke** action. |
+| **HI - Cross-App Access (Atlassian)** | P0 **DCR** (one-time) → T1 login → T2 **id-JAG** (aud = Atlassian) → T3 **Atlassian token** → T4/T5 **Atlassian MCP** | Cross-App Access directly to a third-party SaaS. The agent registers with Atlassian once via Dynamic Client Registration (shown in a collapsed *Prerequisite* panel above the steps), then redeems an Okta id-JAG at `auth.atlassian.com` with the DCR client credentials and reads / creates Jira tickets via Atlassian's Rovo MCP. |
 
 ### Auth at a glance
 
@@ -137,6 +138,7 @@ validates the required vars and prints exactly which is missing.
 | NHI / Service App | `SERVICE_CLIENT_ID`, `SERVICE_PRIVATE_KEY_FILE`, `SERVICE_KID`, `SERVICE_SCOPES`, `SERVICE_IDJAG_SCOPES`, `SERVICE_ISSUER`, `SERVICE_AUDIENCE`, `SERVICE_RESOURCE` |
 | STS Broker (GitHub) | `GITHUB_RESOURCE`, `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_PR_BASE`, `GITHUB_PR_HEAD`, `GITHUB_PR_TITLE` |
 | STS Broker (Atlassian) | `ATLASSIAN_STS_RESOURCE`; optional `ATLASSIAN_MCP_URL` (default `https://mcp.atlassian.com/v2/mcp`), `ATLASSIAN_STS_PROJECT_KEY` (default: Read searches all projects, Create uses the newest ticket's project), `ATLASSIAN_STS_CLOUD_ID` (default: first accessible site), `ATLASSIAN_STS_SCOPES`, `ATLASSIAN_STS_ISSUE_TYPE` (default `Task`), `ATLASSIAN_STS_ISSUE_SUMMARY`, `ATLASSIAN_STS_ISSUE_DESCRIPTION`, `ATLASSIAN_STS_MAX_RESULTS`, `ATLASSIAN_STS_REVOKE_WORKFLOW_URL` |
+| HI - Cross-App Access (Atlassian) | `ATLASSIAN_XAA_ISSUER`; DCR credentials from `keys/atlassian-dcr.json` (written by the one-time registration — UI *Register* button or `node scripts/atlassian-dcr.mjs`) or `ATLASSIAN_XAA_CLIENT_ID` / `ATLASSIAN_XAA_CLIENT_SECRET` (required on Render); optional `ATLASSIAN_XAA_SCOPES`, `ATLASSIAN_XAA_MCP_URL` (default `https://mcp.atlassian.com/v1/mcp/authv2`), `ATLASSIAN_XAA_CLOUD_ID` (default: the token's accessible sites, fallback id-JAG `aud_tenant`), `ATLASSIAN_XAA_PROJECT_KEY`. Commit `registrations/atlassian-dcr.json` (redacted DCR record shown in the UI). |
 
 See `.env.example` for the full, commented list.
 

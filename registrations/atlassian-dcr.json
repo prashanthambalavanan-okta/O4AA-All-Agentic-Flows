@@ -1,0 +1,48 @@
+{
+  "registeredAt": "2026-11-13T02:19:38.309Z",
+  "issuer": "https://auth.atlassian.com/VCeDsk8ZHncYF1g234fKtc4lNipbBhu3",
+  "clientId": "cF1Igrt9VZAjGjTV0168sZH79F6eEeMd",
+  "step": {
+    "id": "P0",
+    "title": "Dynamic Client Registration (one-time)",
+    "badge": "DCR",
+    "from": "Agent",
+    "to": "Atlassian Auth Server",
+    "ok": true,
+    "note": "One-time prerequisite. The client_id and client_secret returned here are what T3 sends to auth.atlassian.com/oauth/token together with the id-JAG. Configure this client_id on the Atlassian resource in Okta’s Cross-App Access settings.",
+    "expandHeaders": false,
+    "request": {
+      "method": "POST",
+      "url": "https://auth.atlassian.com/VCeDsk8ZHncYF1g234fKtc4lNipbBhu3/dcr/register",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      "body": "{\n  \"client_name\": \"O4AA-Agent-XAA\",\n  \"redirect_uris\": [\n    \"https://oktaforai.oktapreview.com/oauth/callback\"\n  ],\n  \"grant_types\": [\n    \"authorization_code\",\n    \"refresh_token\",\n    \"urn:ietf:params:oauth:grant-type:jwt-bearer\"\n  ],\n  \"response_types\": [\n    \"code\"\n  ]\n}"
+    },
+    "response": {
+      "status": 201,
+      "headers": {
+        "content-type": "application/json;charset=UTF-8",
+        "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+        "atl-traceid": "8f20486405c1493993db300606353e3e",
+        "date": "Fri, 13 Nov 2026 02:19:38 GMT"
+      },
+      "body": {
+        "client_id": "cF1Igrt9VZAjGjTV0168sZH79F6eEeMd",
+        "client_id_issued_at": 1794536378,
+        "client_name": "O4AA-Agent-XAA",
+        "client_profile": "ai.dcr3p",
+        "client_secret": "ATOANaxL…B983 [redacted]",
+        "client_secret_expires_at": 0,
+        "disabled": false,
+        "redirect_uris": [
+          "https://oktaforai.oktapreview.com/oauth/callback"
+        ],
+        "token_endpoint_auth_method": "none"
+      }
+    },
+    "token": null,
+    "code": "curl -X POST 'https://auth.atlassian.com/VCeDsk8ZHncYF1g234fKtc4lNipbBhu3/dcr/register' \\\n  -H 'Content-Type: application/json' \\\n  -H 'Accept: application/json' \\\n  -d '{\"client_name\":\"O4AA-Agent-XAA\",\"redirect_uris\":[\"https://oktaforai.oktapreview.com/oauth/callback\"],\"grant_types\":[\"authorization_code\",\"refresh_token\",\"urn:ietf:params:oauth:grant-type:jwt-bearer\"],\"response_types\":[\"code\"]}'"
+  }
+}

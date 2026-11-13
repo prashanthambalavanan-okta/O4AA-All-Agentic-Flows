@@ -90,3 +90,19 @@ export async function pasteSamlAssertion(assertion) {
   });
   return res.json();
 }
+
+// HI - Cross-App Access (Atlassian) — one-time DCR prerequisite.
+export async function getAtlassianRegistration() {
+  const res = await fetch('/api/xaa-atlassian/registration', { credentials: 'include' });
+  return res.json();
+}
+
+export async function registerAtlassianAgent({ force = false } = {}) {
+  const res = await fetch('/api/xaa-atlassian/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ force }),
+  });
+  return res.json();
+}

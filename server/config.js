@@ -391,6 +391,55 @@ export const config = {
     maxResults: Number(process.env.ATLASSIAN_STS_MAX_RESULTS) || 10,
   },
 
+  // HI - Cross-App Access (Atlassian). The agent registers itself with Atlassian once
+  // (Dynamic Client Registration), then on every run: user id_token → id-JAG at the Okta
+  // ORG auth server (audience = Atlassian issuer) → Atlassian access token (jwt-bearer,
+  // DCR client_id/secret) → Atlassian Rovo MCP. Login (T0/T1) is the regular agent login.
+  xaaAtlassian: {
+    // Atlassian authorization-server issuer for your Atlassian org, e.g.
+    // https://auth.atlassian.com/<id>. DCR endpoint = <issuer>/dcr/register.
+    issuer: trimUrl(process.env.ATLASSIAN_XAA_ISSUER),
+    registrationUrl:
+      process.env.ATLASSIAN_XAA_REGISTRATION_URL ||
+      (process.env.ATLASSIAN_XAA_ISSUER ? `${trimUrl(process.env.ATLASSIAN_XAA_ISSUER)}/dcr/register` : undefined),
+    // T3 — where the id-JAG is redeemed.
+    tokenUrl: process.env.ATLASSIAN_XAA_TOKEN_URL || 'https://auth.atlassian.com/oauth/token',
+    // T2 — the id-JAG is minted at the ORG authorization server (custom auth servers
+    // can't issue id-JAGs for an external resource).
+    idJagTokenUrl: ORG_TOKEN_URL,
+    // 'audience' on T2 = the Atlassian issuer (the id-JAG's aud). Optional 'resource'.
+    audience: process.env.ATLASSIAN_XAA_AUDIENCE || trimUrl(process.env.ATLASSIAN_XAA_ISSUER),
+    resource: process.env.ATLASSIAN_XAA_RESOURCE || undefined,
+    scopes:
+      process.env.ATLASSIAN_XAA_SCOPES ||
+      [
+        'read:account', 'read:me', 'read:jira-work', 'write:jira-work',
+        'read:all:twg', 'write:all:twg',
+        'read:page:confluence', 'read:space:confluence', 'search:confluence',
+      ].join(' '),
+    // DCR credentials. Env wins; otherwise keys/atlassian-dcr.json (written by the
+    // one-time registration — see server/xaa/atlassianDcr.js).
+    clientId: process.env.ATLASSIAN_XAA_CLIENT_ID || undefined,
+    clientSecret: process.env.ATLASSIAN_XAA_CLIENT_SECRET || undefined,
+    // DCR request metadata.
+    clientName: process.env.ATLASSIAN_XAA_CLIENT_NAME || 'O4AA-Agent-XAA',
+    // Required by DCR even though jwt-bearer never redirects.
+    redirectUri: process.env.ATLASSIAN_XAA_REDIRECT_URI || `${APP_BASE_URL}/api/xaa-atlassian/callback`,
+    mcpUrl: process.env.ATLASSIAN_XAA_MCP_URL || 'https://mcp.atlassian.com/v1/mcp/authv2',
+    // Site UUID / site URL / site name. Blank = discover the token's sites via
+    // api.atlassian.com/oauth/token/accessible-resources (fallback: id-JAG aud_tenant).
+    cloudId: process.env.ATLASSIAN_XAA_CLOUD_ID || undefined,
+    // Jira project + ticket defaults — fall back to the STS Atlassian flow's values
+    // (usually the same Jira site / project).
+    projectKey: process.env.ATLASSIAN_XAA_PROJECT_KEY || process.env.ATLASSIAN_STS_PROJECT_KEY,
+    issueType: process.env.ATLASSIAN_XAA_ISSUE_TYPE || process.env.ATLASSIAN_STS_ISSUE_TYPE || 'Task',
+    summary: process.env.ATLASSIAN_XAA_ISSUE_SUMMARY || 'Automated ticket via Okta Cross-App Access',
+    description:
+      process.env.ATLASSIAN_XAA_ISSUE_DESCRIPTION ||
+      'Created by the AI agent with an Atlassian token redeemed from an Okta id-JAG (Cross-App Access).',
+    maxResults: Number(process.env.ATLASSIAN_XAA_MAX_RESULTS) || 10,
+  },
+
   // Secrets flow (T2) — vaulted-secret token exchange at the org token endpoint.
   secrets: {
     tokenUrl: ORG_TOKEN_URL,

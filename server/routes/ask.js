@@ -25,6 +25,7 @@ import { buildMcpStep, validateBasic, buildBasicMcpStep, summarize } from '../xa
 import { routeTool, routeFinanceTool } from '../xaa/toolRouter.js';
 import { requireFlowAuth, requireValidSubjectToken } from './authGate.js';
 import { runAuthPatternFlow } from '../xaa/authPatternFlow.js';
+import { runXaaAtlassianFlow } from '../xaa/xaaAtlassian.js';
 
 const router = Router();
 
@@ -389,6 +390,9 @@ router.post('/ask', async (req, res) => {
       answer = r.answer;
       interaction = r.interaction;
       if (r.stsAccessToken) req.session.stsAtlassianAccessToken = r.stsAccessToken;
+    } else if (flow === 'xaa-atlassian') {
+      const action = /\b(create|open|new|raise|file)\b/i.test(question || '') ? 'create' : 'read';
+      answer = await runXaaAtlassianFlow(req.session.idToken, steps, action);
     } else if (flow === 'hi-saml') {
       answer = await runSamlFlow(req.session.samlAssertion, toolName, steps);
     } else if (flow === 'hi-a2a') {

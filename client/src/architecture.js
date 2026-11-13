@@ -755,6 +755,92 @@ export const ARCHITECTURE = {
     M-->>A: Jira issue data
     A-->>U: Tickets shown in the agent UI`,
   },
+
+  'xaa-atlassian': {
+    summary:
+      'Cross-App Access straight to a third-party SaaS. Atlassian’s authorization server trusts the Okta org as an identity-assertion issuer (Enterprise managed authentication), so the agent can trade an Okta id-JAG for an Atlassian access token itself — no Okta-brokered token, no consent screen. Atlassian only knows agents that registered through Dynamic Client Registration, so a one-time prerequisite (P0) registers the agent at Atlassian and returns the client_id / client_secret it authenticates with at Atlassian’s token endpoint; that client_id is also configured on the Atlassian resource in Okta’s Cross-App Access settings. Each run: the user signs in to the agent (same login as Cross-App Access), the agent exchanges the user’s ID token for an id-JAG whose audience is the Atlassian issuer, redeems it at auth.atlassian.com with the jwt-bearer grant, and calls Atlassian’s Rovo MCP server as that user to read or create Jira tickets.',
+    steps: [
+      {
+        id: 'P0',
+        title: 'Dynamic Client Registration (one-time)',
+        from: 'Agent',
+        to: 'Atlassian Auth Server',
+        description: 'POST <Atlassian issuer>/dcr/register with client_name, redirect_uris and grant_types including urn:ietf:params:oauth:grant-type:jwt-bearer. Atlassian returns a client_id and client_secret. Done once — the recorded request/response is in the collapsed “Prerequisite” panel above the steps. The client_id is then set on the Atlassian resource in Okta.',
+      },
+      {
+        id: 'T0',
+        title: 'Authorization Request',
+        from: 'User (browser)',
+        to: 'Okta (IdP)',
+        description: 'The agent redirects the browser to /authorize with response_type=code, PKCE (S256), state and nonce — identical to the plain Cross-App Access flow’s T0.',
+      },
+      {
+        id: 'T1',
+        title: 'User Login',
+        from: 'Agent',
+        to: 'Okta (IdP)',
+        description: 'The agent POSTs the code to /token with a private_key_jwt assertion; the user’s id_token is held in the agent’s session — identical to the plain Cross-App Access flow’s T1.',
+      },
+      {
+        id: 'T2',
+        title: 'Token Exchange → ID-JAG',
+        from: 'Agent',
+        to: 'Okta Org Server',
+        description: 'grant_type = token-exchange, subject_token = id_token, requested_token_type = id-jag, audience = the Atlassian issuer, scope = Atlassian scopes, private_key_jwt. Must go to the ORG authorization server. The agent checks the id-JAG’s aud, client_id and aud_tenant (the Atlassian site) and flags mismatches on the card.',
+      },
+      {
+        id: 'T3',
+        title: 'Access Token Request (Atlassian)',
+        from: 'Agent',
+        to: 'Atlassian Auth Server',
+        description: 'POST auth.atlassian.com/oauth/token with grant_type = jwt-bearer, assertion = id-JAG, and the DCR client_id / client_secret from P0. Atlassian validates the id-JAG against the trusted Okta issuer and returns an Atlassian access token for the user.',
+      },
+      {
+        id: 'T4',
+        title: 'Atlassian MCP · initialize',
+        from: 'Agent',
+        to: 'Atlassian MCP',
+        description: 'JSON-RPC initialize to Atlassian’s Rovo MCP server with the Atlassian token as the Bearer — opens an MCP session. Unless ATLASSIAN_XAA_CLOUD_ID is set, the agent then lists the token’s sites from api.atlassian.com/oauth/token/accessible-resources and uses the Jira site found there (falling back to the id-JAG’s aud_tenant).',
+      },
+      {
+        id: 'T5',
+        title: 'MCP Tool Call · Read / Create Jira Ticket',
+        from: 'Agent',
+        to: 'Atlassian MCP',
+        description: 'tools/call searchJiraIssuesUsingJql (read) or createJiraIssue (write) — performed as the signed-in user, with that user’s Jira permissions.',
+      },
+    ],
+    diagram: `sequenceDiagram
+    participant U as User (browser)
+    participant A as Agent (OIDC client)
+    participant IdP as Okta (IdP / Org Server)
+    participant AS as Atlassian Auth Server
+    participant M as Atlassian MCP (Rovo)
+
+    rect rgb(232, 240, 254)
+    Note over A,AS: One-time setup (P0)
+    A->>AS: P0 POST /dcr/register (grant_types incl. jwt-bearer)
+    AS-->>A: client_id + client_secret
+    Note over IdP: Admin sets this client_id on the Atlassian resource in Okta XAA
+    end
+
+    U->>A: Open the agent app, start the flow
+    A-->>U: Redirect to Okta /authorize (code + PKCE)
+    U->>IdP: T0 GET /authorize, then authenticate
+    IdP-->>U: T0 302 to agent /callback with code
+    U->>A: GET /callback with code
+    A->>IdP: T1 POST /token (code + verifier + private_key_jwt)
+    IdP-->>A: id_token (held in the agent session)
+    A->>IdP: T2 Token Exchange (subject: id_token, audience: Atlassian issuer)
+    IdP-->>A: id-JAG (aud = Atlassian, aud_tenant = site)
+    A->>AS: T3 POST /oauth/token (jwt-bearer, id-JAG, DCR client_id/secret)
+    AS-->>A: Atlassian access_token (the user)
+    A->>M: T4 MCP initialize (Bearer access_token)
+    M-->>A: MCP session
+    A->>M: T5 tools/call searchJiraIssuesUsingJql or createJiraIssue
+    M-->>A: Jira issue data
+    A-->>U: Tickets shown in the agent UI`,
+  },
 };
 
 // ── Authentication Patterns ──

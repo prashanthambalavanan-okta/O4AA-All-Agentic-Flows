@@ -8,3 +8,11 @@ keys/*.key
 *.log
 .DS_Store
 .env.auth-patterns
+
+# Local-only scratch space for testing (never committed)
+local-testing/
+# Atlassian DCR credentials (client_secret) — HI - Cross-App Access (Atlassian).
+# The redacted record in registrations/atlassian-dcr.json IS meant to be committed.
+keys/atlassian-dcr.json
+# Python bytecode (scripts/xaa_atlassian.py)
+__pycache__/

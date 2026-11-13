@@ -196,6 +196,24 @@ export const FLOWS = {
     greeting: 'Click “Read Jira tickets” or “Create a Jira ticket” to start.',
     placeholder: 'Ask the agent to read or create Jira tickets…',
   },
+  'xaa-atlassian': {
+    id: 'xaa-atlassian',
+    name: 'HI - Cross-App Access (Atlassian)',
+    note: 'Using subject id_token · Atlassian registered via DCR',
+    tagline: 'Agent → id-JAG → Atlassian Access Token → Atlassian MCP (Jira)',
+    description:
+      'The agent registers itself with Atlassian once via Dynamic Client Registration. On each run it exchanges the user’s ID token for an id-JAG targeted at Atlassian, redeems it at Atlassian’s authorization server for an Atlassian access token, and calls Atlassian’s Rovo MCP server to read and create Jira tickets — no consent screen, no Okta-stored Atlassian token.',
+    accent: '#2684ff',
+    resourceParty: '3P',
+    // Shows the collapsed one-time DCR panel above the steps (SequencePane).
+    prerequisite: 'atlassian-dcr',
+    suggestions: [
+      { label: 'Read Jira tickets', text: 'Read Jira tickets' },
+      { label: 'Create a Jira ticket', text: 'Create a new Jira ticket' },
+    ],
+    greeting: 'Click “Read Jira tickets” or “Create a Jira ticket” to start.',
+    placeholder: 'Ask the agent to read or create Jira tickets…',
+  },
 };
 
 // ── Authentication Patterns ──

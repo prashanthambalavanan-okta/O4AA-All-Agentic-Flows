@@ -7,6 +7,7 @@ import oidcRouter, { initOidc } from './auth/oidc.js';
 import samlRouter from './auth/saml.js';
 import authPatternsRouter from './auth/authPatterns.js';
 import askRouter from './routes/ask.js';
+import xaaAtlassianRouter from './routes/xaaAtlassian.js';
 import schedulerRouter from './routes/scheduler.js';
 import { initMcp } from './mcp/inventoryServer.js';
 
@@ -44,6 +45,7 @@ async function main() {
   app.use('/api', samlRouter);
   app.use('/api', authPatternsRouter);
   app.use('/api', askRouter);
+  app.use('/api', xaaAtlassianRouter);
   app.use('/api', schedulerRouter);
 
   // Serve the built client in production.

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import SequenceView from './SequenceView.jsx';
 import ArchitectureView from './ArchitectureView.jsx';
+import AtlassianDcrPanel from './AtlassianDcrPanel.jsx';
 import { ARCHITECTURE } from '../architecture.js';
 
 export default function SequencePane({ flow, steps }) {
@@ -19,7 +20,15 @@ export default function SequencePane({ flow, steps }) {
           </button>
         </div>
       )}
-      {tab === 'architecture' && hasArchitecture ? <ArchitectureView flow={flow} /> : <SequenceView steps={steps} />}
+      {tab === 'architecture' && hasArchitecture ? (
+        <ArchitectureView flow={flow} />
+      ) : (
+        <>
+          {/* One-time prerequisite (collapsed) shown above the per-run steps. */}
+          {flow.prerequisite === 'atlassian-dcr' && <AtlassianDcrPanel />}
+          <SequenceView steps={steps} />
+        </>
+      )}
     </section>
   );
 }
