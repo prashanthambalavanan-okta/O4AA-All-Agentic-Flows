@@ -11,7 +11,7 @@ const PROTOCOL_VERSION = '2025-06-18';
 
 // Parse a Streamable HTTP response: plain JSON, or an SSE stream of `data:` frames.
 // Returns the JSON-RPC message answering `id` (or the first message if none matches).
-function parseRpc(text, id) {
+export function parseRpc(text, id) {
   try {
     return JSON.parse(text);
   } catch {
@@ -35,7 +35,7 @@ function parseRpc(text, id) {
 }
 
 // Tool results come back as content[] text blocks; Atlassian's are usually JSON text.
-function toolPayload(result) {
+export function toolPayload(result) {
   if (result?.structuredContent && typeof result.structuredContent === 'object') return result.structuredContent;
   const text = (result?.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
   if (!text) return result;

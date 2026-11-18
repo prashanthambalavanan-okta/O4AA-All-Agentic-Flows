@@ -106,3 +106,34 @@ export async function registerAtlassianAgent({ force = false } = {}) {
   });
   return res.json();
 }
+
+// ── Tester tab ──
+async function testerJson(res) {
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok && !body.steps) {
+    const err = new Error(body.error_description || body.error || `HTTP ${res.status}`);
+    err.code = body.error;
+    throw err;
+  }
+  return body;
+}
+
+export async function getTesterFlow(flow) {
+  return testerJson(await fetch(`/api/tester/flows/${encodeURIComponent(flow)}`, { credentials: 'include' }));
+}
+
+export async function runTesterStep(flow, stepId, values) {
+  return testerJson(
+    await fetch('/api/tester/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ flow, stepId, values }),
+    })
+  );
+}
+
+// The Tester's fresh-login result for a flow (set by /api/tester/callback; read once).
+export async function getTesterLoginResult(flow) {
+  return testerJson(await fetch(`/api/tester/login-result?flow=${encodeURIComponent(flow)}`, { credentials: 'include' }));
+}

@@ -25,6 +25,28 @@ function bodyHighlightMode(headers) {
   return undefined;
 }
 
+// Okta returns x-okta-request-id on every API response; it is the System Log's
+// transaction.id. The Admin Console lives on the "-admin" host of the org the request
+// went to (oktaforai.oktapreview.com → oktaforai-admin.oktapreview.com). Custom domains
+// can't be mapped to their admin host, so no link is shown for them.
+const OKTA_HOST = /^([a-z0-9-]+?)(-admin)?\.(okta|oktapreview|okta-emea|okta-gov|okta-mil|trexcloud)\.com$/i;
+export function oktaSystemLogUrl(step) {
+  const headers = step.response?.headers || {};
+  const key = Object.keys(headers).find((k) => k.toLowerCase() === 'x-okta-request-id');
+  const requestId = key && headers[key];
+  if (!requestId) return null;
+  let host;
+  try {
+    host = new URL(step.request.url).hostname;
+  } catch {
+    return null;
+  }
+  const m = host.match(OKTA_HOST);
+  if (!m) return null;
+  const search = encodeURIComponent(`transaction.id eq "${requestId}"`).replace(/%20/g, '+');
+  return `https://${m[1]}-admin.${m[3]}.com/report/system_log_2?search=${search}`;
+}
+
 function MethodPill({ method }) {
   return <span className="method-pill">{method}</span>;
 }
@@ -47,20 +69,47 @@ export default function StepCard({ step, expanded, onSelect }) {
   // Decoded (default) URL-decodes params and expands JWTs; Raw shows the exact wire bytes.
   const [decoded, setDecoded] = useState(true);
   const url = decoded ? splitUrl(step.request.url) : { base: step.request.url, query: null };
+  const systemLogUrl = oktaSystemLogUrl(step);
 
   return (
     <div className={`card ${step.ok ? 'card-ok' : 'card-fail'} ${expanded ? 'card-open' : ''}`}>
       <div className="card-rail" />
-      <button className="card-header" onClick={onSelect}>
+      {/* A div, not a <button>: the System Log link can't be nested inside a button. */}
+      <div
+        className="card-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={onSelect}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect();
+          }
+        }}
+      >
         <span className={`card-check ${step.ok ? 'ok' : 'fail'}`}>{step.ok ? '✓' : '!'}</span>
         <span className="card-title">{step.title}</span>
         <span className="card-route">
           {step.from} <span className="arrow">›</span> {step.to}
         </span>
+        {systemLogUrl && (
+          <a
+            className="card-okta-logs"
+            href={systemLogUrl}
+            target="_blank"
+            rel="noreferrer"
+            title="Open this request in the Okta System Log (filtered by its x-okta-request-id)"
+            onClick={(e) => e.stopPropagation()}
+          >
+            View Okta system logs ↗
+          </a>
+        )}
         <span className={`card-badge badge-${step.badge.replace(/\s+/g, '-').toLowerCase()}`}>
           {step.badge}
         </span>
-      </button>
+      </div>
 
       {expanded && (
         <div className="card-body">

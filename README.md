@@ -155,6 +155,28 @@ The Home page has two tabs: **Agentic Patterns** (all the flows above) and **Aut
 
 Copy `.env.auth-patterns.example` to `.env.auth-patterns` and set one client ID per agent. On each Okta app, register the redirect URI `<APP_BASE_URL>/api/authp/<pkjwt|secret|public|cimd>/callback`. For CIMD, the client ID is the URL of the metadata document this app serves at `/api/authp/cimd/client-metadata.json`, and its keys are served at `/api/authp/cimd/jwks.json`. Okta has to be able to fetch that URL, so use the public HTTPS deployment, not localhost.
 
+## Tester tab
+
+Every flow has a **Tester** tab next to Sequence and Architecture, and each Home card has a **Tester ⚙** link that opens it directly. The Tester runs the flow one step at a time with values you supply, so you can try a new client ID, agent, auth server, resource or MCP server without editing `.env`.
+
+- **Defaults**: every field starts from the same `.env` / `.env.a2a` / `.env.auth-patterns` values the chat uses. **Reset to .env defaults** puts them back.
+- **Client authentication**, per token step:
+  - private key (`private_key_jwt`), from a key file in this project or a pasted PEM that is never written to disk
+  - client secret, as a Basic header or in the POST body
+  - client ID only (public client)
+
+  If you leave a secret blank, the configured secret is used, and that value never reaches the browser.
+- **Subject token** (user flows): taken from the current session, pasted in, or obtained with **Fresh login**. Fresh login runs authorization code + PKCE with any issuer, client and auth method. Add these sign-in redirect URIs to the app you log in with:
+  - `http://localhost:8080/api/tester/callback`
+  - `https://o4aa-all-agentic-flows.onrender.com/api/tester/callback`
+
+  The default apps are the agent login app (`OKTA_CLIENT_ID`), the Web App (`WEBAPP_CLIENT_ID`), the A2A login app (`A2A_OKTA_CLIENT_ID`) and the four Authentication Pattern agents. For the CIMD agent, add the URIs to `redirect_uris` in its metadata document instead. The Tester tab lists all of these with their client IDs.
+- **Chaining**: each step's outputs (`access_token`, id-JAG, refresh token, vaulted secret fields, …) fill the fields marked **↳** in later steps. Run steps one by one, or **Run all**, which stops at the first failure.
+- **Final hop**: the built-in demo MCP (with token validation you can turn off), any remote MCP server URL (Streamable HTTP, `initialize` → `tools/call`, or `tools/list` when no tool is given), any HTTP API (GitHub / Jira presets), or Atlassian's Rovo MCP.
+- **Profiles**: save named value sets per flow in the browser. Keys, secrets and tokens are left out unless **Remember secrets** is ticked.
+
+The Tester mints tokens for whoever is signed in, so it is **on by default only when `NODE_ENV` is not `production`**. Set `TESTER_ENABLED=true|false` to override.
+
 ## Run
 
 ```sh

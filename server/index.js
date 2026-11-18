@@ -9,6 +9,7 @@ import authPatternsRouter from './auth/authPatterns.js';
 import askRouter from './routes/ask.js';
 import xaaAtlassianRouter from './routes/xaaAtlassian.js';
 import schedulerRouter from './routes/scheduler.js';
+import testerRouter from './routes/tester.js';
 import { initMcp } from './mcp/inventoryServer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,7 @@ async function main() {
   app.use('/api', askRouter);
   app.use('/api', xaaAtlassianRouter);
   app.use('/api', schedulerRouter);
+  app.use('/api', testerRouter);
 
   // Serve the built client in production.
   const clientDist = path.resolve(__dirname, '..', 'client', 'dist');

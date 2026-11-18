@@ -4,7 +4,9 @@
   "client_uri": "https://o4aa-agent-flows.onrender.com",
   "redirect_uris": [
     "http://localhost:8080/api/authp/cimd/callback",
-    "https://o4aa-agent-flows.onrender.com/api/authp/cimd/callback"
+    "https://o4aa-agent-flows.onrender.com/api/authp/cimd/callback",
+    "http://localhost:8080/api/tester/callback",
+    "https://o4aa-all-agentic-flows.onrender.com/api/tester/callback"
   ],
   "grant_types": [
     "authorization_code",

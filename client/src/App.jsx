@@ -10,6 +10,8 @@ import SamlSetup from './components/SamlSetup.jsx';
 export default function App() {
   const [state, setState] = useState({ loading: true });
   const [flowId, setFlowId] = useState(null); // null = home
+  // Which right-pane tab a flow opens on ('tester' when opened via a Tester link / login return).
+  const [initialTab, setInitialTab] = useState('sequence');
 
   async function refresh() {
     const me = await getMe();
@@ -21,6 +23,7 @@ export default function App() {
     // Returning from a login carrying ?flow=... opens that flow once its auth context is met.
     const params = new URLSearchParams(window.location.search);
     const urlFlow = params.get('flow');
+    const urlTab = params.get('tab');
     if (params.toString()) {
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -37,7 +40,11 @@ export default function App() {
             : f.authContext === 'webapp'
             ? me.webappAuthenticated
             : me.authenticated;
-        if (ok) setFlowId(urlFlow);
+        // The Tester runs on its own values, so it only needs the app login.
+        if (urlTab === 'tester' && me.authenticated && me.testerEnabled) {
+          setInitialTab('tester');
+          setFlowId(urlFlow);
+        } else if (ok) setFlowId(urlFlow);
       }
     });
   }, []);
@@ -71,7 +78,14 @@ export default function App() {
   // their own login (separate client) when selected.
   const flow = flowId ? FLOWS[flowId] : null;
 
+  // Open a flow straight on its Tester tab — no flow-specific login needed.
+  function openTester(id) {
+    setInitialTab('tester');
+    setFlowId(id);
+  }
+
   function selectFlow(id) {
+    setInitialTab('sequence');
     const f = FLOWS[id];
     // Force login is on for this flow: always re-run its /authorize with prompt=login,
     // even though a session exists. The return trip (?flow=id) opens the flow directly
@@ -131,15 +145,19 @@ export default function App() {
       </header>
 
       {!state.authenticated && <Login notice={state.notice} />}
-      {state.authenticated && !flow && <Home onSelect={selectFlow} authp={state.authp} />}
-      {state.authenticated && flow && isSaml && !state.samlAuthenticated && (
+      {state.authenticated && !flow && (
+        <Home onSelect={selectFlow} onTester={state.testerEnabled ? openTester : null} authp={state.authp} />
+      )}
+      {state.authenticated && flow && isSaml && !state.samlAuthenticated && initialTab !== 'tester' && (
         <SamlSetup flow={flow} onReady={refresh} />
       )}
-      {state.authenticated && flow && !(isSaml && !state.samlAuthenticated) && (
+      {state.authenticated && flow && !(isSaml && !state.samlAuthenticated && initialTab !== 'tester') && (
         <Chat
           key={flow.id}
           flow={flow}
           onSessionExpired={handleSessionExpired}
+          testerEnabled={!!state.testerEnabled}
+          initialTab={initialTab}
           loginStep={
             authp ? authp.loginStep : isA2a ? state.a2aLoginStep : isSaml ? state.samlLoginStep : isWebapp ? state.webappLoginStep : state.loginStep
           }

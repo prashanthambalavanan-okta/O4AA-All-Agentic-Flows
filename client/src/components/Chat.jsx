@@ -4,7 +4,7 @@ import SequencePane from './SequencePane.jsx';
 import SchedulerPanel from './SchedulerPanel.jsx';
 import { isForceLogin, setForceLogin, supportsForceLogin, startFlowLogin } from '../forceLogin.js';
 
-export default function Chat({ loginStep, flow, onSessionExpired }) {
+export default function Chat({ loginStep, flow, onSessionExpired, testerEnabled, initialTab }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -47,6 +47,14 @@ export default function Chat({ loginStep, flow, onSessionExpired }) {
       if (res.interaction?.uri) setInteraction(res.interaction);
     } catch (err) {
       // Subject token expired (or the session is gone): sign out and return to login.
+      // Opened via the Tester without this flow's own login: explain instead of signing out.
+      if (err.code === 'not_authenticated' && initialTab === 'tester') {
+        setMessages((m) => [
+          ...m,
+          { role: 'assistant', text: 'This flow’s own login has not been done in this session — open the flow from Home to sign in, or keep using the Tester tab.' },
+        ]);
+        return;
+      }
       if ((err.code === 'token_expired' || err.code === 'not_authenticated') && onSessionExpired) {
         onSessionExpired(err.code === 'token_expired' ? err.message : 'Your session ended. Sign in again.');
         return;
@@ -183,7 +191,7 @@ export default function Chat({ loginStep, flow, onSessionExpired }) {
         )}
       </section>
 
-      <SequencePane flow={flow} steps={steps} />
+      <SequencePane flow={flow} steps={steps} testerEnabled={testerEnabled} initialTab={initialTab} />
     </div>
   );
 }

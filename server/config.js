@@ -94,6 +94,33 @@ export const config = {
   appBaseUrl: process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 8080}`,
   sessionSecret: process.env.SESSION_SECRET,
 
+  // Tester tab — runs each flow step by step with operator-supplied values (client ids,
+  // keys, secrets, auth servers, MCP/API URLs). It is effectively a token-minting proxy
+  // for whoever is signed in, so it is ON by default only outside production; set
+  // TESTER_ENABLED=true|false to force it either way.
+  tester: {
+    enabled: process.env.TESTER_ENABLED
+      ? process.env.TESTER_ENABLED === 'true'
+      : process.env.NODE_ENV !== 'production',
+    // Redirect URI for the Tester's own "fresh login" (authorization code + PKCE).
+    // Register it on any Okta app you log in with from the Tester.
+    redirectUri:
+      process.env.TESTER_REDIRECT_URI ||
+      `${(process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 8080}`).replace(/\/$/, '')}/api/tester/callback`,
+    // Every callback URI worth registering on the login apps: this host, local dev and
+    // the Render deployment (Render sets RENDER_EXTERNAL_URL itself).
+    redirectUris: [
+      ...new Set(
+        [
+          process.env.TESTER_REDIRECT_URI ||
+            `${(process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 8080}`).replace(/\/$/, '')}/api/tester/callback`,
+          `http://localhost:${process.env.PORT || 8080}/api/tester/callback`,
+          `${(process.env.RENDER_EXTERNAL_URL || process.env.TESTER_RENDER_BASE_URL || 'https://o4aa-all-agentic-flows.onrender.com').replace(/\/$/, '')}/api/tester/callback`,
+        ].filter(Boolean)
+      ),
+    ],
+  },
+
   // T1 — user login. The chat web app is a CONFIDENTIAL client that authenticates
   // with private_key_jwt (public/private key), not a client secret.
   okta: {

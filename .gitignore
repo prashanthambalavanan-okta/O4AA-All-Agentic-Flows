@@ -16,3 +16,6 @@ local-testing/
 keys/atlassian-dcr.json
 # Python bytecode (scripts/xaa_atlassian.py)
 __pycache__/
+
+# Local backups of real env files (contain secrets)
+keys/.env*

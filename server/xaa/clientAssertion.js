@@ -17,7 +17,7 @@ export async function buildClientAssertion({ clientId, audience, kid, privateKey
   const now = Math.floor(Date.now() / 1000);
   const jti = `${now}-${Math.random().toString(36).slice(2)}-xaa`;
   return new SignJWT({})
-    .setProtectedHeader({ alg: 'RS256', kid, typ: 'JWT' })
+    .setProtectedHeader(kid ? { alg: 'RS256', kid, typ: 'JWT' } : { alg: 'RS256', typ: 'JWT' })
     .setIssuer(clientId)
     .setSubject(clientId)
     .setAudience(audience)

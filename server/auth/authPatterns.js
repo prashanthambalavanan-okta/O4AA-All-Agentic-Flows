@@ -66,7 +66,8 @@ router.get(ap.cimd.metadataPath.replace(/^\/api/, ''), (req, res) => {
     client_id: agent.clientId,
     client_name: ap.cimd.clientName,
     client_uri: ap.cimd.clientUri,
-    redirect_uris: [agent.redirectUri],
+    // The agent's own login callback plus the Tester's, so the Tester's Fresh login works for CIMD.
+    redirect_uris: [...new Set([agent.redirectUri, ...config.tester.redirectUris])],
     response_types: ['code'],
     grant_types: ['authorization_code', 'urn:ietf:params:oauth:grant-type:token-exchange', 'urn:ietf:params:oauth:grant-type:jwt-bearer'],
     token_endpoint_auth_method: agent.tokenAuthMethod,

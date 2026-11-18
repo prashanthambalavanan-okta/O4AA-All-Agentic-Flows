@@ -54,7 +54,7 @@ function Party({ party, kind }) {
   );
 }
 
-function FlowCard({ f, onSelect, notConfigured }) {
+function FlowCard({ f, onSelect, onTester, notConfigured }) {
   // cardSuffix (e.g. "(Login as agent)") renders on its own line below the main
   // title; other flow names are shown as-is.
   const title = f.cardSuffix ? f.name.replace(f.cardSuffix, '').trim() : f.name;
@@ -76,6 +76,27 @@ function FlowCard({ f, onSelect, notConfigured }) {
             </>
           )}
         </span>
+        {onTester && (
+          <span
+            className="flow-tester"
+            role="button"
+            tabIndex={0}
+            title="Open this flow's Tester tab with your own client ids, keys, auth servers and URLs"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTester(f.id);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                onTester(f.id);
+              }
+            }}
+          >
+            Tester ⚙
+          </span>
+        )}
         <span className="flow-go">Open →</span>
       </div>
       {f.warning && <div className="flow-warning">{f.warning}</div>}
@@ -90,7 +111,7 @@ function FlowCard({ f, onSelect, notConfigured }) {
   );
 }
 
-export default function Home({ onSelect, authp = {} }) {
+export default function Home({ onSelect, onTester, authp = {} }) {
   const [tabId, setTabId] = useState(() => sessionStorage.getItem(TAB_KEY) || 'agentic');
   const tab = TABS.find((t) => t.id === tabId) || TABS[0];
   const chooseTab = (id) => {
@@ -138,6 +159,7 @@ export default function Home({ onSelect, authp = {} }) {
                   key={f.id}
                   f={f}
                   onSelect={onSelect}
+                  onTester={onTester}
                   notConfigured={f.authPattern && authp[f.authPattern]?.configured === false}
                 />
               ))}

@@ -440,6 +440,8 @@ router.get('/me', (req, res) => {
     webappLoginStep: req.session.webappLoginStep || null,
     // Authentication Patterns: { pkjwt|secret|public|cimd: { configured, authenticated, user, loginStep } }
     authp: authPatternsMe(req.session),
+    // Tester tab availability (TESTER_ENABLED; on by default outside production).
+    testerEnabled: config.tester.enabled,
   });
 });
 
