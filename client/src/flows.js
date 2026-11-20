@@ -50,7 +50,7 @@ export const FLOWS = {
   'secrets-atlassian': {
     id: 'secrets-atlassian',
     name: 'NHI - Secrets (Atlassian id/secret from OPA)',
-    warning: 'Not recommended (Secrets exposed to agent)',
+    warning: 'Not Recommended (Long lived secrets)',
     tagline: 'Service App → Agent → Vaulted Atlassian id/secret → Atlassian Token → Jira Scrum Board',
     description:
       'A service app gets a client_credentials token, the agent swaps it for the Atlassian client id/secret in the Okta vault, then reads the Jira Scrum board (read-only).',
@@ -73,7 +73,7 @@ export const FLOWS = {
   'secrets-atlassian-token': {
     id: 'secrets-atlassian-token',
     name: 'NHI - Secrets (Atlassian token from OPA)',
-    recommended: 'Recommended (workflow sets token in Vault)',
+    recommended: 'Recommended (Short lived tokens)',
     tagline: 'Service App → Agent → Vaulted Atlassian Token → Jira Scrum Board',
     description:
       'A service app gets a client_credentials token, the agent swaps it for the Atlassian access token stored in the Okta vault, then reads the Jira Scrum board (read-only). ',
@@ -213,6 +213,46 @@ export const FLOWS = {
     ],
     greeting: 'Click “Read Jira tickets” or “Create a Jira ticket” to start.',
     placeholder: 'Ask the agent to read or create Jira tickets…',
+  },
+  'xaa-gcp': {
+    id: 'xaa-gcp',
+    name: 'HI - Cross-App Access (Google Cloud via WIF)',
+    note: 'Using subject id_token · Google Workload Identity Federation',
+    tagline: 'Agent → id-JAG → Okta Token (aud = Google) → Google STS → BigQuery / Workspace',
+    description:
+      'Google does not accept id-JAGs, so the agent redeems the id-JAG at an Okta Custom Authorization Server whose audience is the Google workload identity provider. Google STS trusts that Okta issuer and swaps the token for a short-lived federated token, which the agent uses to query BigQuery as the user, or to reach Google Drive by impersonating a service account. No Google service account key anywhere.',
+    accent: '#4285f4',
+    resourceParty: '3P',
+    suggestions: [
+      { label: 'Query BigQuery', text: 'Query BigQuery' },
+      { label: 'List my Drive files (DWD)', text: 'List my Google Drive files' },
+      { label: 'List Drive files (Shared)', text: 'List Google Drive files shared with the agent' },
+    ],
+    greeting: 'Pick an option below: query BigQuery, or list Google Drive files with domain-wide delegation (DWD) or Shared mode.',
+    placeholder: 'Ask the agent to query BigQuery or list Google Drive files…',
+    // Explainer panel shown above the suggestion chips (Chat.jsx).
+    chatInfo: {
+      title: 'How the agent reaches Google',
+      intro:
+        'BigQuery accepts the Google federated token (T4) directly. Google Drive does not, so the agent uses that token to impersonate a service account, in one of two modes:',
+      items: [
+        {
+          label: 'Query BigQuery',
+          tag: 'Direct',
+          body: 'The federated token calls BigQuery as the signed-in user. Google IAM authorizes that user (or the agent) on the dataset; no service account is involved.',
+        },
+        {
+          label: 'DWD (domain-wide delegation)',
+          tag: 'Acts as the user',
+          body: 'The service account signs a JWT with sub = your email (signJwt), then trades it at Google OAuth for a token that IS you. The agent sees your own Drive. Needs a Workspace admin to authorize the service account for the Drive scope; Okta and Workspace users must match.',
+        },
+        {
+          label: 'Shared',
+          tag: 'Acts as the service account',
+          body: 'One generateAccessToken call returns a token for the service account itself. The agent sees only files someone shared with that service account. No Workspace admin setup, but the result is not tied to the user.',
+        },
+      ],
+    },
   },
 };
 

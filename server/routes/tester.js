@@ -46,7 +46,7 @@ async function endpoints(issuer) {
 
 // The Okta apps the Tester's "Fresh login" can log in with by default — each needs the
 // Tester callback URIs as sign-in redirect URIs. Client ids are public identifiers.
-const DEFAULT_FLOWS = ['xaa', 'secrets', 'service-account', 'sts-github', 'sts-atlassian', 'xaa-atlassian'];
+const DEFAULT_FLOWS = ['xaa', 'secrets', 'service-account', 'sts-github', 'sts-atlassian', 'xaa-atlassian', 'xaa-gcp'];
 function loginApps(currentFlow) {
   const ap = config.authPatterns.agents;
   const apps = [

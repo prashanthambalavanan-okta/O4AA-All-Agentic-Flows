@@ -26,6 +26,7 @@ import { routeTool, routeFinanceTool } from '../xaa/toolRouter.js';
 import { requireFlowAuth, requireValidSubjectToken } from './authGate.js';
 import { runAuthPatternFlow } from '../xaa/authPatternFlow.js';
 import { runXaaAtlassianFlow } from '../xaa/xaaAtlassian.js';
+import { runGoogleWifFlow } from '../xaa/googleWif.js';
 
 const router = Router();
 
@@ -393,6 +394,13 @@ router.post('/ask', async (req, res) => {
     } else if (flow === 'xaa-atlassian') {
       const action = /\b(create|open|new|raise|file)\b/i.test(question || '') ? 'create' : 'read';
       answer = await runXaaAtlassianFlow(req.session.idToken, steps, action);
+    } else if (flow === 'xaa-gcp') {
+      const q = question || '';
+      const action = /\b(drive|workspace|docs?|files?|sheets?)\b/i.test(q) ? 'workspace' : 'bigquery';
+      // Drive mode is picked per question (the two UI chips): "shared" → files shared with
+      // the service account; anything else → domain-wide delegation, acting as the user.
+      const workspaceMode = /\bshared\b/i.test(q) ? 'shared' : 'dwd';
+      answer = await runGoogleWifFlow(req.session.idToken, steps, action, { workspaceMode });
     } else if (flow === 'hi-saml') {
       answer = await runSamlFlow(req.session.samlAssertion, toolName, steps);
     } else if (flow === 'hi-a2a') {

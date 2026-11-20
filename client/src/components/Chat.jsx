@@ -148,6 +148,24 @@ export default function Chat({ loginStep, flow, onSessionExpired, testerEnabled,
               )}
             </div>
 
+            {flow.chatInfo && (
+              <details className="chat-info" open>
+                <summary>{flow.chatInfo.title}</summary>
+                {flow.chatInfo.intro && <p className="chat-info-intro">{flow.chatInfo.intro}</p>}
+                <dl>
+                  {flow.chatInfo.items.map((it) => (
+                    <div key={it.label} className="chat-info-item">
+                      <dt>
+                        {it.label}
+                        {it.tag && <span className="chat-info-tag">{it.tag}</span>}
+                      </dt>
+                      <dd>{it.body}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            )}
+
             <div className="suggestions">
               {suggestions.map((s) => (
                 <button key={s.label} className="chip" disabled={busy} onClick={() => submit(s.text)}>

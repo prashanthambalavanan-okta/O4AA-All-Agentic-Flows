@@ -72,19 +72,18 @@ export async function requestAtlassianToken(rawSecret) {
   return { step, ok, accessToken: ok ? body.access_token : null };
 }
 
-/** T4 — read the Scrum board's issues from the Jira Software (Agile) API. */
+/** T4 — read the Scrum board's issues via Jira platform JQL search (needs only read:jira-work;
+ *  the Agile /board/{id}/issue API needs read:board-scope:jira-software, which the token lacks). */
 export async function readScrumBoardIssues(accessToken, stepId = 'T4') {
-  const { apiBaseUrl, boardId, maxResults } = config.atlassian;
+  const { apiBaseUrl, jql, maxResults } = config.atlassian;
   let cloudId = config.atlassian.cloudId;
   const headers = { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' };
   const shownHeaders = { ...headers, Authorization: `Bearer ${mask(accessToken)}` };
 
-  if (!boardId) return { ok: false, error: 'Atlassian flow is not configured — set ATLASSIAN_BOARD_ID.', step: notConfigured('ATLASSIAN_BOARD_ID', stepId) };
-
   cloudId = await resolveCloudId(apiBaseUrl, cloudId, headers);
   if (!cloudId) return { ok: false, error: 'Could not find the Jira site for this token — the Atlassian credential may not have access to the site, or ATLASSIAN_CLOUD_ID is wrong.', step: notConfigured('ATLASSIAN_CLOUD_ID', stepId) };
 
-  const url = `${apiBaseUrl}/ex/jira/${cloudId}/rest/agile/1.0/board/${boardId}/issue?maxResults=${maxResults}&fields=summary,status,assignee`;
+  const url = `${apiBaseUrl}/ex/jira/${cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${maxResults}&fields=summary,status,assignee`;
   const { status, body } = await doFetch(url, { headers });
   const ok = status >= 200 && status < 300;
   const step = {

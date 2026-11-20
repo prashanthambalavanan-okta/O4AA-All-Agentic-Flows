@@ -383,14 +383,14 @@ export const ARCHITECTURE = {
         title: 'Get Atlassian Token',
         from: 'Agent',
         to: 'Atlassian',
-        description: 'client_credentials grant at api.atlassian.com/oauth/token using the vaulted client id/secret, audience = api.atlassian.com and the granular scopes read:board-scope:jira-software and read:issue-details:jira. The client secret is masked in the UI.',
+        description: 'client_credentials grant at api.atlassian.com/oauth/token using the vaulted client id/secret, audience = api.atlassian.com and the scope read:jira-work. The client secret is masked in the UI.',
       },
       {
         id: 'T4',
         title: 'Read Scrum Board Issues',
         from: 'Agent',
         to: 'Atlassian Jira API',
-        description: 'GET /ex/jira/{cloudId}/rest/agile/1.0/board/{boardId}/issue with the Atlassian access token as the Bearer credential.',
+        description: 'GET /ex/jira/{cloudId}/rest/api/3/search/jql?jql=… with the Atlassian access token as the Bearer credential.',
       },
     ],
     diagram: `sequenceDiagram
@@ -438,7 +438,7 @@ export const ARCHITECTURE = {
         title: 'Read Scrum Board Issues',
         from: 'Agent',
         to: 'Atlassian Jira API',
-        description: 'GET /ex/jira/{cloudId}/rest/agile/1.0/board/{boardId}/issue with the vaulted Atlassian access token as the Bearer credential. There is no Atlassian token request in this flow.',
+        description: 'GET /ex/jira/{cloudId}/rest/api/3/search/jql?jql=… with the vaulted Atlassian access token as the Bearer credential. There is no Atlassian token request in this flow.',
       },
     ],
     diagram: `sequenceDiagram
@@ -840,6 +840,54 @@ export const ARCHITECTURE = {
     A->>M: T5 tools/call searchJiraIssuesUsingJql or createJiraIssue
     M-->>A: Jira issue data
     A-->>U: Tickets shown in the agent UI`,
+  },
+
+  'xaa-gcp': {
+    summary:
+      'Google Cloud does not accept Okta id-JAGs, so a native Cross-App Access flow ending at Google is not possible. This pattern gets the same outcome by chaining standard XAA with Google Workload Identity Federation. The agent gets an id-JAG from the Okta Org authorization server, then redeems it at a dedicated Okta Custom Authorization Server whose Audience IS the Google workload identity provider, so the resulting access token is addressed to Google and carries the user (sub), the agent (act/cid) and the granted scopes. Google STS trusts that Custom AS as an OIDC issuer (discovery + JWKS, no shared secret), applies the pool’s attribute mapping and attribute condition (the agent allow-list), and returns a short-lived federated token. Google IAM then authorizes that federated principal: per-user on principal://…/subject/<sub>, per-agent on principalSet://…/attribute.agent/<agent>. Okta governs which agent may act for which user and with what scopes; Google IAM governs what the principal may do. BigQuery accepts the federated token directly. Google Workspace APIs (Drive) do not, so that path impersonates a service account, with domain-wide delegation to act as the same user.',
+    steps: [
+      { id: 'T0', title: 'Authorization Request', from: 'User (browser)', to: 'Okta (IdP)', description: 'The agent redirects the browser to /authorize with response_type=code and PKCE (S256), identical to the plain Cross-App Access flow’s T0.' },
+      { id: 'T1', title: 'User Login', from: 'Agent', to: 'Okta (IdP)', description: 'The agent redeems the code at /token with a private_key_jwt assertion; the user’s id_token stays in the agent’s server-side session.' },
+      { id: 'T2', title: 'Token Exchange → ID-JAG', from: 'Agent', to: 'Okta Org Server', description: 'RFC 8693: subject_token = id_token, requested_token_type = id-jag, audience = the Google-dedicated Custom AS issuer, scope = e.g. gcp.bigquery.read, private_key_jwt. Okta checks the agent, linked app, resource connection and allowed scopes. The id-JAG lives about 5 minutes and is single use.' },
+      { id: 'T3', title: 'Access Token Request (Custom AS)', from: 'Agent', to: 'Okta Custom AS', description: 'RFC 7523 jwt-bearer with assertion = id-JAG, authenticated as the agent. The Custom AS access policy (agent, user groups, scopes) applies. The token’s aud = the Google WIF provider resource name. The card checks aud, iss, sub (≤127 chars), act and lifetime against what Google will require.' },
+      { id: 'T4', title: 'Google STS Token Exchange', from: 'Agent', to: 'Google STS', description: 'POST sts.googleapis.com/v1/token: grant_type = token-exchange, subject_token = the Okta access token, subject_token_type = jwt, audience = the WIF provider, scope = cloud-platform. No client credentials. Google validates issuer/JWKS, audience and expiry, maps google.subject = sub and attribute.agent = act.sub, evaluates the attribute condition, and returns a federated token (at most 1 hour).' },
+      { id: 'T5', title: 'BigQuery · jobs.query', from: 'Agent', to: 'BigQuery API', description: 'Bearer federated token. IAM checks roles/bigquery.jobUser (project) and dataViewer (dataset) on the federated principal; row- and column-level policies apply to the same principal. The default query returns SESSION_USER(), the principal Google saw. Cloud Audit Logs record it.' },
+      { id: 'T5–T7', title: 'Workspace · Drive (variant)', from: 'Agent', to: 'IAM Credentials → Google OAuth → Drive', description: 'Drive does not accept federated tokens. With domain-wide delegation, the federated principal has a service account signJwt an assertion with sub = the signed-in user’s email (T5), redeems it at oauth2.googleapis.com (T6) for a token AS that user, then lists Drive files (T7). In shared mode, generateAccessToken returns a token for the service account itself, which sees only files shared with it. Weaker isolation than BigQuery; needs its own security review.' },
+    ],
+    diagram: `sequenceDiagram
+    participant U as User (browser)
+    participant A as Agent (OIDC client)
+    participant O as Okta Org Server
+    participant C as Okta Custom AS (aud = Google)
+    participant S as Google STS + WIF Pool
+    participant G as Google Cloud API
+
+    U->>A: Open the agent app, start the flow
+    A-->>U: Redirect to Okta /authorize (code + PKCE)
+    U->>O: T0 GET /authorize, then authenticate
+    O-->>U: T0 302 to agent /callback with code
+    U->>A: GET /callback with code
+    A->>O: T1 POST /token (code + verifier + private_key_jwt)
+    O-->>A: id_token (held in the agent session)
+    A->>O: T2 Token Exchange (subject: id_token, audience: Custom AS)
+    O-->>A: id-JAG (5 min, single use)
+    A->>C: T3 JWT-Bearer (assertion: id-JAG, private_key_jwt)
+    C-->>A: Okta access token (sub = user, act = agent, aud = WIF provider)
+    Note over C,S: Pool trusts the Custom AS issuer (OIDC discovery + JWKS)
+    A->>S: T4 Token Exchange (subject_token: Okta token, type: jwt)
+    S-->>A: Federated access token (≤ 1h)
+    alt BigQuery
+        A->>G: T5 POST bigquery/v2/.../queries (Bearer federated)
+        G-->>A: Rows (IAM on principal:// / principalSet://)
+    else Workspace (Drive) via domain-wide delegation
+        A->>G: T5 IAM signJwt on the SA (sub = user email)
+        G-->>A: Signed JWT
+        A->>G: T6 oauth2.googleapis.com/token (jwt-bearer)
+        G-->>A: Workspace token as the user
+        A->>G: T7 GET drive/v3/files
+        G-->>A: Files
+    end
+    A-->>U: Answer rendered in the agent UI`,
   },
 };
 

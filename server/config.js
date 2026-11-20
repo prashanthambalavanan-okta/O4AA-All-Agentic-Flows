@@ -467,6 +467,60 @@ export const config = {
     maxResults: Number(process.env.ATLASSIAN_XAA_MAX_RESULTS) || 10,
   },
 
+  // HI - Cross-App Access (Google Cloud via Workload Identity Federation). Google does
+  // not accept id-JAGs, so the chain is: user id_token → id-JAG at the Okta ORG auth
+  // server (audience = a dedicated Okta Custom AS) → Okta access token at that Custom AS
+  // (jwt-bearer; its Audience = the Google WIF provider) → Google STS federated token →
+  // BigQuery, or Google Workspace via service-account impersonation (+ domain-wide delegation).
+  googleWif: (() => {
+    const authServer = trimUrl(process.env.GCP_XAA_AUTH_SERVER);
+    const projectNumber = process.env.GCP_PROJECT_NUMBER;
+    const poolId = process.env.GCP_WIF_POOL_ID;
+    const providerId = process.env.GCP_WIF_PROVIDER_ID;
+    const derivedAudience =
+      projectNumber && poolId && providerId
+        ? `//iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`
+        : undefined;
+    const workspaceScopes = process.env.GCP_WORKSPACE_SCOPES || 'https://www.googleapis.com/auth/drive.readonly';
+    const wifAudience = process.env.GCP_WIF_AUDIENCE || derivedAudience;
+    return {
+      // T2 — id-JAG at the Okta ORG auth server. Okta matches 'audience' against the
+      // target Custom AS's configured Audience — which here IS the Google WIF provider
+      // name — not its issuer URL (sending the issuer gives invalid_target).
+      idJagTokenUrl: process.env.GCP_IDJAG_TOKEN_URL || ORG_TOKEN_URL,
+      idJagAudience: process.env.GCP_IDJAG_AUDIENCE || wifAudience || authServer,
+      resource: process.env.GCP_XAA_RESOURCE || undefined,
+      scopes: process.env.GCP_XAA_SCOPES || 'gcp.bigquery.read',
+      // T3 — the dedicated Custom AS whose Audience is the Google WIF provider.
+      authServer,
+      tokenUrl: tokenEndpoint(authServer),
+      // T4 — Google STS. The audience must equal the provider's allowed audience AND the
+      // Okta Custom AS Audience (that is what makes the Okta token addressed to Google).
+      wifAudience,
+      projectNumber,
+      poolId,
+      stsUrl: process.env.GCP_STS_URL || 'https://sts.googleapis.com/v1/token',
+      stsScope: process.env.GCP_STS_SCOPE || 'https://www.googleapis.com/auth/cloud-platform',
+      // T5 — BigQuery. SESSION_USER() returns the federated principal Google IAM sees.
+      projectId: process.env.GCP_PROJECT_ID,
+      bigqueryQuery:
+        process.env.GCP_BQ_QUERY || 'SELECT SESSION_USER() AS principal, CURRENT_TIMESTAMP() AS queried_at',
+      bigqueryLocation: process.env.GCP_BQ_LOCATION || undefined,
+      maxResults: Number(process.env.GCP_BQ_MAX_RESULTS) || 10,
+      // Google Workspace (Drive) is not reachable with a federated token directly, so the
+      // federated principal impersonates a service account. The mode is picked per run in
+      // the UI (two chips), not in .env:
+      //   dwd    — signJwt(sub = user email) → oauth2 jwt-bearer → token AS the user
+      //   shared — generateAccessToken → token as the SA (sees files shared with it)
+      workspaceServiceAccount: process.env.GCP_WORKSPACE_SA_EMAIL || undefined,
+      workspaceScopes,
+      // DWD subject. Blank = the signed-in user's email from the id_token.
+      workspaceSubject: process.env.GCP_WORKSPACE_SUBJECT || undefined,
+      driveQuery: process.env.GCP_DRIVE_QUERY || 'trashed = false',
+      drivePageSize: Number(process.env.GCP_DRIVE_PAGE_SIZE) || 10,
+    };
+  })(),
+
   // Secrets flow (T2) — vaulted-secret token exchange at the org token endpoint.
   secrets: {
     tokenUrl: ORG_TOKEN_URL,
@@ -485,9 +539,14 @@ export const config = {
     oauthTokenUrl: process.env.ATLASSIAN_TOKEN_URL || 'https://api.atlassian.com/oauth/token',
     apiBaseUrl: process.env.ATLASSIAN_API_BASE_URL || 'https://api.atlassian.com',
     audience: process.env.ATLASSIAN_AUDIENCE || 'api.atlassian.com',
-    scope: process.env.ATLASSIAN_SCOPE || 'read:board-scope:jira-software read:issue-details:jira',
+    scope: process.env.ATLASSIAN_SCOPE || 'read:jira-work',
     cloudId: process.env.ATLASSIAN_CLOUD_ID,
     boardId: process.env.ATLASSIAN_BOARD_ID,
+    // /rest/api/3/search/jql rejects unbounded JQL — scope by project if ATLASSIAN_PROJECT_KEY is set.
+    jql: process.env.ATLASSIAN_JQL
+      || (process.env.ATLASSIAN_PROJECT_KEY
+        ? `project = ${process.env.ATLASSIAN_PROJECT_KEY} ORDER BY created DESC`
+        : 'created >= -3650d ORDER BY created DESC'),
     maxResults: Number(process.env.ATLASSIAN_MAX_RESULTS) || 10,
   },
 

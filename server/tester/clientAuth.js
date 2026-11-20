@@ -55,7 +55,7 @@ export function resolveAuth(input = {}, def = {}) {
 export async function buildAuth(auth, tokenUrl) {
   const method = auth.method || 'private_key_jwt';
   const clientId = String(auth.clientId || '').trim();
-  if (!clientId) throw new Error('client_id is required.');
+  if (!clientId && method !== 'none') throw new Error('client_id is required.');
   const headers = {};
   const params = {};
   const secrets = [];
@@ -86,7 +86,8 @@ export async function buildAuth(auth, tokenUrl) {
       params.client_secret = secret;
     }
   } else if (method === 'none') {
-    params.client_id = clientId;
+    // Blank = no client authentication at all (e.g. Google STS) — don't send client_id=.
+    if (clientId) params.client_id = clientId;
   } else {
     throw new Error(`Unknown client authentication method '${method}'.`);
   }

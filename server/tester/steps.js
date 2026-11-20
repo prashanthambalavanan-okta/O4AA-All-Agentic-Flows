@@ -25,6 +25,7 @@ export const TOKEN_TYPES = {
   vaulted_secret: 'urn:okta:params:oauth:token-type:vaulted-secret',
   service_account: 'urn:okta:params:oauth:token-type:service-account',
   oauth_sts: 'urn:okta:params:oauth:token-type:oauth-sts',
+  jwt: 'urn:ietf:params:oauth:token-type:jwt',
 };
 
 // ── value helpers ──

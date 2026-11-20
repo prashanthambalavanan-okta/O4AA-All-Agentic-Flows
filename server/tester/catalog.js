@@ -445,7 +445,7 @@ const jiraBoardHttp = (id, tokenBind) => {
         label: 'Jira · Scrum board issues',
         apply: {
           method: 'GET',
-          url: `${at.apiBaseUrl}/ex/jira/{cloudId}/rest/agile/1.0/board/${at.boardId || '<board-id>'}/issue?maxResults=${at.maxResults}&fields=summary,status,assignee`,
+          url: `${at.apiBaseUrl}/ex/jira/{cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(at.jql)}&maxResults=${at.maxResults}&fields=summary,status,assignee`,
           body: '',
         },
       },
@@ -692,6 +692,74 @@ export async function flowSteps(flow) {
           }),
         }),
         atlassianMcp({ id: 'T4', cfg: x, tokenBind: ['T3.access_token'], fallbackBind: ['T2.claims.aud_tenant'], envPrefix: 'ATLASSIAN_XAA' }),
+      ];
+    }
+    case 'xaa-gcp': {
+      const g = config.googleWif;
+      const bq = `https://bigquery.googleapis.com/bigquery/v2/projects/${g.projectId || '<project-id>'}`;
+      const sa = encodeURIComponent(g.workspaceServiceAccount || '<sa-email>');
+      return [
+        SUBJECTS.default(),
+        tokenExchange({
+          id: 'T2',
+          title: 'Token Exchange → ID-JAG (for the Google Custom AS)',
+          to: 'Okta Org Server',
+          tokenUrl: g.idJagTokenUrl,
+          auth: agentAuth(),
+          subjectBind: ['T1.token'],
+          subjectTypeBind: ['T1.subject_token_type'],
+          subjectTokenType: TOKEN_TYPES.id_token,
+          audience: g.idJagAudience,
+          scope: g.scopes,
+          resource: g.resource,
+        }),
+        jwtBearer({
+          id: 'T3',
+          title: 'Access Token Request (Custom AS · aud = Google)',
+          to: 'Okta Custom AS',
+          tokenUrl: g.tokenUrl,
+          bind: ['T2.access_token'],
+          auth: agentAuth(),
+        }),
+        tokenExchange({
+          id: 'T4',
+          title: 'Google STS Token Exchange → Federated Token',
+          badge: 'Google Token',
+          to: 'Google STS',
+          tokenUrl: g.stsUrl,
+          // Google STS takes no client authentication — it trusts the Okta signature.
+          auth: authFrom({ method: 'none', clientId: '' }),
+          subjectBind: ['T3.access_token'],
+          subjectTokenType: TOKEN_TYPES.jwt,
+          requestedTokenType: TOKEN_TYPES.access_token,
+          audience: g.wifAudience,
+          scope: g.stsScope,
+        }),
+        http({
+          id: 'T5',
+          title: 'Google Cloud API',
+          badge: 'Google API',
+          to: 'Google Cloud API',
+          tokenBind: ['T4.access_token'],
+          presets: [
+            {
+              value: 'bq-query',
+              label: 'BigQuery · jobs.query',
+              apply: { method: 'POST', url: `${bq}/queries`, body: JSON.stringify({ query: g.bigqueryQuery, useLegacySql: false, maxResults: g.maxResults }, null, 2) },
+            },
+            { value: 'bq-datasets', label: 'BigQuery · list datasets', apply: { method: 'GET', url: `${bq}/datasets`, body: '' } },
+            {
+              value: 'sa-token',
+              label: 'IAM · generateAccessToken (Workspace SA)',
+              apply: {
+                method: 'POST',
+                url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${sa}:generateAccessToken`,
+                body: JSON.stringify({ scope: g.workspaceScopes.split(/\s+/), lifetime: '3600s' }, null, 2),
+              },
+            },
+            { value: 'custom', label: 'Custom request', apply: {} },
+          ],
+        }),
       ];
     }
     default:
